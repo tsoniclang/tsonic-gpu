@@ -159,7 +159,8 @@ function recordParameterFacts(
             elementType: tensorRow.elementType,
             rank: tensorRow.rank,
             device: tensorRow.device,
-            ...(shape === undefined ? {} : { shape }),
+            ...(shape.kind === "declared" ? { shape: shape.symbols } : {}),
+            ...(shape.kind === "invalid" ? { invalidShape: true as const } : {}),
           },
           [{ message: "gpu tensor parameter fact from provider tensor row" }],
         );
@@ -176,19 +177,24 @@ function recordParameterFacts(
   }
 }
 
+type GpuShapeSymbolResolution =
+  | { readonly kind: "none" }
+  | { readonly kind: "declared"; readonly symbols: readonly string[] }
+  | { readonly kind: "invalid" };
+
 // Dimension symbols come from the tensor type's generic type arguments: each
 // configured argument position must be a plain type reference (typically a
-// type parameter of the kernel function); its name becomes the symbol. When
-// any position does not resolve, no shape is declared and extraction falls
-// back to per-parameter synthesized dimensions.
+// type parameter of the kernel function); its name becomes the symbol. A row
+// that declares shape symbol positions fails closed when any position does
+// not bind — declared shape equality is never silently dropped.
 function declaredShapeSymbols(
   lifecycle: ExtensionLifecycleContext,
   typeNode: Node,
   tensorRow: GpuTensorTypeRow,
-): readonly string[] | undefined {
+): GpuShapeSymbolResolution {
   const positions = tensorRow.shapeSymbolArguments;
-  if (positions === undefined || positions.length !== tensorRow.rank) {
-    return undefined;
+  if (positions === undefined) {
+    return { kind: "none" };
   }
   const { ast } = lifecycle.compiler;
   const typeArguments = ast.typeArguments(typeNode);
@@ -196,16 +202,16 @@ function declaredShapeSymbols(
   for (const position of positions) {
     const argument = typeArguments[position];
     if (argument === undefined || ast.kindName(argument) !== KindTypeReference) {
-      return undefined;
+      return { kind: "invalid" };
     }
     const nameNode = TypeReferenceNode_TypeName(argument) ?? argument;
     const symbol = ast.text(nameNode);
     if (symbol.length === 0) {
-      return undefined;
+      return { kind: "invalid" };
     }
     symbols.push(symbol);
   }
-  return symbols;
+  return { kind: "declared", symbols };
 }
 
 function recordDeviceCallFacts(

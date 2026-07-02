@@ -301,6 +301,45 @@ export const k = kernel(function k(a: Float32Tensor, out: Float32Tensor) {
 `,
   ),
   lane(
+    "shape symbols that do not bind to named type parameters",
+    "gpu.kernel.shape-symbols",
+    `export const k = kernel(function k(a: Matrix<number, number>, out: Float32Tensor) {
+  const i = gpu.globalId(0);
+  out[i] = a.at(i, i);
+});
+`,
+  ),
+  lane(
+    "scalar parameter colliding with a shape symbol",
+    "gpu.kernel.shape-symbols",
+    `export const k = kernel(function k<M extends number, N extends number>(a: Matrix<M, N>, c: Matrix<M, N>, M: int32) {
+  const row = gpu.globalId(0);
+  const col = gpu.globalId(1);
+  c.set(row, col, a.at(row, col));
+});
+`,
+  ),
+  lane(
+    "local binding shadowing a shape symbol",
+    "gpu.kernel.binding",
+    `export const k = kernel(function k<M extends number, N extends number>(a: Matrix<M, N>, c: Matrix<M, N>) {
+  const M = 1;
+  const row = gpu.globalId(0);
+  const col = gpu.globalId(1);
+  c.set(row, col, a.at(row, col));
+});
+`,
+  ),
+  lane(
+    "meta parameter colliding with a kernel value",
+    "gpu.kernel.meta-parameter",
+    `export const k = kernel(function k(a: Float32Tensor, out: Float32Tensor, n: int32) {
+  const block = gpu.meta("n");
+  out[block] = a[block];
+});
+`,
+  ),
+  lane(
     "mixed tensor device domains",
     "gpu.device.mixed",
     `export const k = kernel(function k(a: Float32HostTensor, out: Float32Tensor) {

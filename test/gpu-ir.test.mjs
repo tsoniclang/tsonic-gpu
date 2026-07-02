@@ -265,6 +265,31 @@ test("assignments to values that are not mutable locals reject", () => {
   assert.ok(capabilityIds(validateGpuIrModule(module)).includes("gpu.ir.assign"));
 });
 
+test("shape symbols colliding with parameter names reject", () => {
+  const module = singleKernelModule({
+    parameters: [
+      tensorParameter("a", "input", { shape: [{ kind: "symbol", name: "n" }] }),
+      tensorParameter("out", "output"),
+      { kind: "scalar", name: "n", role: "scalar", scalarType: "int32" },
+    ],
+    body: { operations: [] },
+    effects: [],
+  });
+  assert.ok(capabilityIds(validateGpuIrModule(module)).includes("gpu.ir.symbol-collision"));
+});
+
+test("launch meta parameters colliding with kernel values reject", () => {
+  const module = singleKernelModule({
+    launch: {
+      grid: [{ kind: "symbol", name: "N" }],
+      metaParameters: ["N"],
+      streamPolicy: "default",
+      devicePolicy: "single-device",
+    },
+  });
+  assert.ok(capabilityIds(validateGpuIrModule(module)).includes("gpu.ir.symbol-collision"));
+});
+
 test("duplicate kernel names reject", () => {
   const base = vectorAddModule();
   const module = { ...base, kernels: [base.kernels[0], base.kernels[0]] };

@@ -23,6 +23,10 @@ export interface GpuTensorParameterFact {
   // arguments; sharing a symbol across parameters states a shape-equality
   // constraint (for example A[M,K] x B[K,N] -> C[M,N]).
   readonly shape?: readonly string[];
+  // Set when the tensor row declares shape symbol positions but the type
+  // arguments did not bind to named type parameters; extraction fails closed
+  // instead of synthesizing dimensions and losing declared shape equality.
+  readonly invalidShape?: true;
 }
 
 export const gpuTensorParameterFactKey = defineExtensionFactKey<GpuTensorParameterFact>({
@@ -32,6 +36,7 @@ export const gpuTensorParameterFactKey = defineExtensionFactKey<GpuTensorParamet
     left.elementType === right.elementType &&
     left.rank === right.rank &&
     left.device === right.device &&
+    left.invalidShape === right.invalidShape &&
     (left.shape ?? []).length === (right.shape ?? []).length &&
     (left.shape ?? []).every((symbol, index) => symbol === (right.shape ?? [])[index]),
 });

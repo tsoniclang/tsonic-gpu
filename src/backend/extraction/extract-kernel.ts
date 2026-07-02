@@ -93,6 +93,7 @@ interface ExtractionContext {
   readonly diagnostics: TargetDiagnostic[];
   readonly tensors: Map<string, TensorEntry>;
   readonly metaParameters: Set<string>;
+  readonly shapeSymbols: Set<string>;
   tempCounter: number;
   loopDepth: number;
 }
@@ -120,6 +121,7 @@ export function extractGpuKernel(request: GpuKernelExtractionRequest): GpuKernel
     diagnostics: [],
     tensors: new Map(),
     metaParameters: new Set(),
+    shapeSymbols: new Set(),
     tempCounter: 0,
     loopDepth: 0,
   };
@@ -196,6 +198,16 @@ function extractFromStatement(
     }
     const tensorFact = context.input.facts.getFact(parameter, gpuTensorParameterFactKey);
     if (tensorFact !== undefined) {
+      if (tensorFact.invalidShape === true) {
+        context.diagnostics.push(
+          missingGpuFactDiagnostic(
+            { ast, sourceFile: context.sourceFile, node: parameter },
+            "gpu.kernel.shape-symbols",
+            `GPU tensor parameter '${name}' declares dimension symbols, but its type arguments do not bind to named type parameters; declared shape equality cannot be dropped.`,
+          ),
+        );
+        continue;
+      }
       context.tensors.set(name, { name, fact: tensorFact });
       parameterOrder.push(name);
       continue;
@@ -213,6 +225,32 @@ function extractFromStatement(
         `GPU kernel parameter '${name}' has no tensor or scalar target fact; device parameters must be provider tensors or source primitives.`,
       ),
     );
+  }
+
+  for (const tensorEntry of context.tensors.values()) {
+    for (const symbol of tensorShapeSymbols(tensorEntry)) {
+      context.shapeSymbols.add(symbol);
+    }
+  }
+  for (const [name] of scope) {
+    if (context.shapeSymbols.has(name)) {
+      reject(
+        context,
+        kernelFunction,
+        "gpu.kernel.shape-symbols",
+        `GPU kernel parameter '${name}' collides with the shape dimension symbol '${name}'; shape symbols and kernel values share one namespace.`,
+      );
+    }
+  }
+  for (const name of context.tensors.keys()) {
+    if (context.shapeSymbols.has(name)) {
+      reject(
+        context,
+        kernelFunction,
+        "gpu.kernel.shape-symbols",
+        `GPU tensor parameter '${name}' collides with the shape dimension symbol '${name}'; shape symbols and kernel values share one namespace.`,
+      );
+    }
   }
 
   const body = ast.body(kernelFunction);
@@ -444,7 +482,7 @@ function buildLocalBindings(context: ExtractionContext, statement: Node, scope: 
       reject(context, declaration, "gpu.kernel.binding", "Device bindings must be plain named identifiers.");
       return;
     }
-    if (scope.has(name) || context.tensors.has(name)) {
+    if (scope.has(name) || context.tensors.has(name) || context.shapeSymbols.has(name) || context.metaParameters.has(name)) {
       reject(context, declaration, "gpu.kernel.binding", `Device binding '${name}' shadows an existing kernel value.`);
       return;
     }
@@ -796,7 +834,12 @@ function buildForStatement(context: ExtractionContext, statement: Node, scope: S
     reject(context, initializer, "gpu.kernel.loop-form", `Device loop counters must be int32 values; found '${lowerBound.dtype}'.`);
     return;
   }
-  if (scope.has(counterName) || context.tensors.has(counterName)) {
+  if (
+    scope.has(counterName) ||
+    context.tensors.has(counterName) ||
+    context.shapeSymbols.has(counterName) ||
+    context.metaParameters.has(counterName)
+  ) {
     reject(context, initializer, "gpu.kernel.binding", `Device loop counter '${counterName}' shadows an existing kernel value.`);
     return;
   }
@@ -1197,7 +1240,7 @@ function buildCallExpression(
     return buildShapeDimIntrinsic(context, expression);
   }
   if (intrinsicFact.intrinsic.kind === "meta-parameter") {
-    return buildMetaParameterIntrinsic(context, expression);
+    return buildMetaParameterIntrinsic(context, expression, scope);
   }
   const callArguments = ast.arguments(expression).filter((argument): argument is Node => argument !== undefined);
   if (intrinsicFact.intrinsic.kind === "thread-index") {
@@ -1335,7 +1378,7 @@ function buildShapeDimIntrinsic(context: ExtractionContext, expression: Node): S
   return { id: symbol, dtype: "int32" };
 }
 
-function buildMetaParameterIntrinsic(context: ExtractionContext, expression: Node): ScalarValue | undefined {
+function buildMetaParameterIntrinsic(context: ExtractionContext, expression: Node, scope: Scope): ScalarValue | undefined {
   const { ast } = context;
   const callArguments = ast.arguments(expression).filter((argument): argument is Node => argument !== undefined);
   const [nameArgument] = callArguments;
@@ -1345,6 +1388,14 @@ function buildMetaParameterIntrinsic(context: ExtractionContext, expression: Nod
   const name = ast.text(nameArgument);
   if (name.length === 0) {
     return reject(context, expression, "gpu.kernel.meta-parameter", "gpu.meta needs a non-empty meta parameter name.");
+  }
+  if ((scope.has(name) && !context.metaParameters.has(name)) || context.tensors.has(name) || context.shapeSymbols.has(name)) {
+    return reject(
+      context,
+      expression,
+      "gpu.kernel.meta-parameter",
+      `Meta parameter '${name}' collides with an existing kernel value; meta parameters share the kernel value namespace.`,
+    );
   }
   context.metaParameters.add(name);
   return { id: name, dtype: "int32" };

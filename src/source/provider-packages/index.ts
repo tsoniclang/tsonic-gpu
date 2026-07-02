@@ -8,8 +8,8 @@ import type {
 } from "@tsonic/tsts";
 import type { TargetProviderPackageImplementation } from "@tsonic/target-api";
 import { gpuTargetId } from "../../descriptor/target-id.js";
-import type { GpuScalarType } from "../../ir/scalar-types.js";
-import type { GpuDeviceDomain } from "../../ir/tensor.js";
+import { isGpuScalarType, type GpuScalarType } from "../../ir/scalar-types.js";
+import { isGpuDeviceDomain, type GpuDeviceDomain } from "../../ir/tensor.js";
 
 // Generic GPU provider-package model. Concrete module specifiers, export
 // names, and tensor type identities live only in package definitions (product
@@ -51,7 +51,82 @@ export interface GpuTensorTypeContributor {
 
 export type GpuProviderPackageImplementation = TargetProviderPackageImplementation & GpuTensorTypeContributor;
 
+// Definitions are configuration; every inconsistency fails at package
+// creation instead of surfacing later as a missing or wrong fact.
+function validateGpuProviderPackageDefinition(definition: GpuProviderPackageDefinition): void {
+  const packageError = (message: string): Error => new Error(`GPU provider package '${definition.id}': ${message}`);
+  const moduleSpecifiers = new Set<string>();
+  const exportsById = new Map<string, (typeof definition.modules)[number]["exports"][number]>();
+  for (const module of definition.modules) {
+    if (module.moduleSpecifier.length === 0) {
+      throw packageError("module specifiers must be non-empty strings.");
+    }
+    if (moduleSpecifiers.has(module.moduleSpecifier)) {
+      throw packageError(`module '${module.moduleSpecifier}' is declared more than once.`);
+    }
+    moduleSpecifiers.add(module.moduleSpecifier);
+    for (const exportDeclaration of module.exports) {
+      if (exportsById.has(exportDeclaration.id)) {
+        throw packageError(`export '${exportDeclaration.id}' is declared more than once.`);
+      }
+      exportsById.set(exportDeclaration.id, exportDeclaration);
+    }
+  }
+  const tensorRowExports = new Set<string>();
+  for (const row of definition.tensorTypes ?? []) {
+    const rowError = (message: string): Error => packageError(`tensor row '${row.exportId}' ${message}`);
+    const exportDeclaration = exportsById.get(row.exportId);
+    if (exportDeclaration === undefined) {
+      throw rowError("references an export this package does not declare.");
+    }
+    if (tensorRowExports.has(row.exportId)) {
+      throw rowError("is declared more than once.");
+    }
+    tensorRowExports.add(row.exportId);
+    if (!isGpuScalarType(row.elementType)) {
+      throw rowError(`has unknown element dtype '${String(row.elementType)}'.`);
+    }
+    if (!isGpuDeviceDomain(row.device)) {
+      throw rowError(`has unknown device domain '${String(row.device)}'.`);
+    }
+    if (!Number.isInteger(row.rank) || row.rank < 1) {
+      throw rowError(`needs an integer rank of at least 1, found '${String(row.rank)}'.`);
+    }
+    if (row.shapeSymbolArguments !== undefined) {
+      if (row.shapeSymbolArguments.length !== row.rank) {
+        throw rowError(`declares ${row.shapeSymbolArguments.length} shape symbol arguments for rank ${row.rank}.`);
+      }
+      const positions = new Set<number>();
+      for (const position of row.shapeSymbolArguments) {
+        if (!Number.isInteger(position) || position < 0) {
+          throw rowError(`has an invalid shape symbol argument position '${String(position)}'.`);
+        }
+        if (positions.has(position)) {
+          throw rowError(`repeats shape symbol argument position ${position}.`);
+        }
+        positions.add(position);
+      }
+    }
+    const memberIds = new Set((exportDeclaration.members ?? []).map((member) => member.id));
+    for (const [label, memberId] of [
+      ["loadMember", row.loadMember],
+      ["storeMember", row.storeMember],
+    ] as const) {
+      if (memberId === undefined) {
+        continue;
+      }
+      if (memberId.length === 0) {
+        throw rowError(`declares an empty ${label} id.`);
+      }
+      if (!memberIds.has(memberId)) {
+        throw rowError(`declares ${label} '${memberId}', which is not a member of export '${row.exportId}'.`);
+      }
+    }
+  }
+}
+
 export function createGpuProviderPackage(definition: GpuProviderPackageDefinition): GpuProviderPackageImplementation {
+  validateGpuProviderPackageDefinition(definition);
   return {
     id: definition.id,
     displayName: definition.displayName,

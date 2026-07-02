@@ -55,6 +55,7 @@ function validateKernel(kernel: GpuIrFunction, report: ReportFn): void {
   const tensorParameters = new Map<string, Extract<GpuKernelParameter, { kind: "tensor" }>>();
   const definedValues = new Set<string>();
   const parameterNames = new Set<string>();
+  const shapeSymbols = new Set<string>();
 
   for (const parameter of kernel.parameters) {
     if (parameter.name.length === 0) {
@@ -72,6 +73,7 @@ function validateKernel(kernel: GpuIrFunction, report: ReportFn): void {
       for (const dimension of parameter.tensor.shape) {
         for (const symbol of gpuShapeSymbolNames(dimension)) {
           definedValues.add(symbol);
+          shapeSymbols.add(symbol);
         }
       }
     } else {
@@ -88,8 +90,26 @@ function validateKernel(kernel: GpuIrFunction, report: ReportFn): void {
 
   validateDeviceConsistency(kernel, tensorParameters, kernelReport);
 
+  // Shape symbols and launch meta parameters are implicitly defined values;
+  // they share one namespace with parameters and must not collide.
+  for (const symbol of shapeSymbols) {
+    if (parameterNames.has(symbol)) {
+      kernelReport(
+        "GPU_INVALID_IR",
+        "gpu.ir.symbol-collision",
+        `GPU kernel '${kernel.name}' shape symbol '${symbol}' collides with a parameter of the same name.`,
+      );
+    }
+  }
   const metaParameterNames = new Set(kernel.launch.metaParameters ?? []);
   for (const metaParameter of metaParameterNames) {
+    if (parameterNames.has(metaParameter) || shapeSymbols.has(metaParameter)) {
+      kernelReport(
+        "GPU_INVALID_IR",
+        "gpu.ir.symbol-collision",
+        `GPU kernel '${kernel.name}' launch meta parameter '${metaParameter}' collides with an existing kernel value.`,
+      );
+    }
     definedValues.add(metaParameter);
   }
   validateLaunchPlan(kernel, definedValues, metaParameterNames, kernelReport);
