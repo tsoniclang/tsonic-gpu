@@ -96,6 +96,7 @@ function validateGpuProviderPackageDefinition(definition: GpuProviderPackageDefi
       if (row.shapeSymbolArguments.length !== row.rank) {
         throw rowError(`declares ${row.shapeSymbolArguments.length} shape symbol arguments for rank ${row.rank}.`);
       }
+      const typeParameterCount = (exportDeclaration.typeParameters ?? []).length;
       const positions = new Set<number>();
       for (const position of row.shapeSymbolArguments) {
         if (!Number.isInteger(position) || position < 0) {
@@ -103,6 +104,11 @@ function validateGpuProviderPackageDefinition(definition: GpuProviderPackageDefi
         }
         if (positions.has(position)) {
           throw rowError(`repeats shape symbol argument position ${position}.`);
+        }
+        if (position >= typeParameterCount) {
+          throw rowError(
+            `declares shape symbol argument position ${position}, but export '${row.exportId}' declares ${typeParameterCount} type parameter(s).`,
+          );
         }
         positions.add(position);
       }

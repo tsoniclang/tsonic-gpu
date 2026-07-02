@@ -151,7 +151,7 @@ function recordParameterFacts(
           ? undefined
           : tensorRows.find((row) => row.exportId === identity.exportId);
       if (tensorRow !== undefined) {
-        const shape = declaredShapeSymbols(lifecycle, typeNode, tensorRow);
+        const shape = declaredShapeSymbols(lifecycle, kernelFunction, typeNode, tensorRow);
         lifecycle.host.facts.set(
           parameter,
           gpuTensorParameterFactKey,
@@ -183,12 +183,14 @@ type GpuShapeSymbolResolution =
   | { readonly kind: "invalid" };
 
 // Dimension symbols come from the tensor type's generic type arguments: each
-// configured argument position must be a plain type reference (typically a
-// type parameter of the kernel function); its name becomes the symbol. A row
-// that declares shape symbol positions fails closed when any position does
-// not bind — declared shape equality is never silently dropped.
+// configured argument position must be a type reference that resolves, by
+// declaration identity, to a type parameter of the kernel function itself —
+// those type parameters are the kernel's dimension declarations. Aliases and
+// other type references fail closed: a row that declares shape symbol
+// positions never silently drops declared shape equality.
 function declaredShapeSymbols(
   lifecycle: ExtensionLifecycleContext,
+  kernelFunction: Node,
   typeNode: Node,
   tensorRow: GpuTensorTypeRow,
 ): GpuShapeSymbolResolution {
@@ -197,6 +199,9 @@ function declaredShapeSymbols(
     return { kind: "none" };
   }
   const { ast } = lifecycle.compiler;
+  const kernelTypeParameters = ast
+    .typeParameters(kernelFunction)
+    .filter((typeParameter): typeParameter is Node => typeParameter !== undefined);
   const typeArguments = ast.typeArguments(typeNode);
   const symbols: string[] = [];
   for (const position of positions) {
@@ -205,6 +210,9 @@ function declaredShapeSymbols(
       return { kind: "invalid" };
     }
     const nameNode = TypeReferenceNode_TypeName(argument) ?? argument;
+    if (!resolvesToKernelTypeParameter(lifecycle, nameNode, kernelTypeParameters)) {
+      return { kind: "invalid" };
+    }
     const symbol = ast.text(nameNode);
     if (symbol.length === 0) {
       return { kind: "invalid" };
@@ -212,6 +220,35 @@ function declaredShapeSymbols(
     symbols.push(symbol);
   }
   return { kind: "declared", symbols };
+}
+
+function resolvesToKernelTypeParameter(
+  lifecycle: ExtensionLifecycleContext,
+  nameNode: Node,
+  kernelTypeParameters: readonly Node[],
+): boolean {
+  if (kernelTypeParameters.length === 0) {
+    return false;
+  }
+  const { ast, checker } = lifecycle.compiler;
+  const symbol = checker.getResolvedSymbolOrNil(nameNode) ?? checker.getSymbolAtLocation(nameNode);
+  if (symbol === undefined) {
+    return false;
+  }
+  const sameNode = (left: Node, right: Node): boolean =>
+    left === right ||
+    (ast.pos(left) === ast.pos(right) &&
+      ast.end(left) === ast.end(right) &&
+      ast.getFileName(ast.getSourceFile(left)) === ast.getFileName(ast.getSourceFile(right)));
+  for (const declaration of checker.getSymbolDeclarations(symbol)) {
+    if (declaration === undefined) {
+      continue;
+    }
+    if (kernelTypeParameters.some((typeParameter) => sameNode(typeParameter, declaration))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function recordDeviceCallFacts(

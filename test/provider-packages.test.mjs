@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createGpuProviderPackage } from "../dist/index.js";
 import { acmeTensorPackage } from "./helpers/gpu-session.mjs";
 
-function definitionWithTensorRow(row, members) {
+function definitionWithTensorRow(row, members, typeParameters = [{ name: "D0" }, { name: "D1" }]) {
   return {
     id: "acme-broken",
     displayName: "Broken",
@@ -12,7 +12,7 @@ function definitionWithTensorRow(row, members) {
       {
         moduleSpecifier: "@acme/broken",
         providerModuleId: "acme.broken",
-        exports: [{ id: "@acme/broken::T", name: "T", kind: "class", members: members ?? [] }],
+        exports: [{ id: "@acme/broken::T", name: "T", kind: "class", typeParameters, members: members ?? [] }],
       },
     ],
     tensorTypes: [{ exportId: "@acme/broken::T", elementType: "float32", rank: 1, device: "cuda", ...row }],
@@ -77,6 +77,17 @@ test("shape symbol argument positions must match the rank and be unique", () => 
   assert.throws(
     () => createGpuProviderPackage(definitionWithTensorRow({ shapeSymbolArguments: [-1] })),
     /invalid shape symbol argument position/u,
+  );
+});
+
+test("shape symbol argument positions must reference the export's type parameters", () => {
+  assert.throws(
+    () => createGpuProviderPackage(definitionWithTensorRow({ shapeSymbolArguments: [1] }, undefined, [{ name: "T" }])),
+    /position 1, but export '@acme\/broken::T' declares 1 type parameter/u,
+  );
+  assert.throws(
+    () => createGpuProviderPackage(definitionWithTensorRow({ shapeSymbolArguments: [0] }, undefined, [])),
+    /position 0, but export '@acme\/broken::T' declares 0 type parameter/u,
   );
 });
 

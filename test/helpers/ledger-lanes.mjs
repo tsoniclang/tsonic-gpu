@@ -310,6 +310,18 @@ export const k = kernel(function k(a: Float32Tensor, out: Float32Tensor) {
 `,
   ),
   lane(
+    "shape symbols bound to type aliases instead of kernel type parameters",
+    "gpu.kernel.shape-symbols",
+    `type M = number;
+type N = number;
+
+export const k = kernel(function k(a: Matrix<M, N>, out: Float32Tensor) {
+  const i = gpu.globalId(0);
+  out[i] = a.at(i, i);
+});
+`,
+  ),
+  lane(
     "scalar parameter colliding with a shape symbol",
     "gpu.kernel.shape-symbols",
     `export const k = kernel(function k<M extends number, N extends number>(a: Matrix<M, N>, c: Matrix<M, N>, M: int32) {
