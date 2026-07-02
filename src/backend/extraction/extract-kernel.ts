@@ -36,6 +36,10 @@ import {
   PostfixUnaryExpression_Operand,
   PrefixUnaryExpression_Operand,
   VariableStatement_DeclarationList,
+  getPostfixUnaryOperatorText,
+  getPrefixUnaryOperatorText,
+  isConstVariableDeclarationList,
+  numericLiteralSourceText,
 } from "../../common/source-ast.js";
 import type {
   GpuBinaryOperator,
@@ -141,6 +145,14 @@ function extractFromStatement(
   fact: GpuKernelDeclarationFact,
 ): GpuIrFunction | undefined {
   const { ast } = context;
+  if (!isConstVariableDeclarationList(VariableStatement_DeclarationList(statement))) {
+    return reject(
+      context,
+      statement,
+      "gpu.kernel.declaration-form",
+      "GPU kernel declarations must be const bindings; kernels cannot be reassigned.",
+    );
+  }
   const kernelFunction = kernelFunctionExpression(context, statement);
   if (kernelFunction === undefined) {
     return reject(
@@ -465,7 +477,7 @@ function buildStore(context: ExtractionContext, assignment: Node, scope: Scope, 
       context,
       target,
       "gpu.kernel.mutable-local",
-      "Only tensor elements can be assigned in device code; local bindings are immutable in the initial GPU subset.",
+      "Only tensor elements can be assigned in device code; local bindings are immutable.",
     );
     return;
   }
@@ -684,18 +696,20 @@ function buildForStatement(context: ExtractionContext, statement: Node, scope: S
 function isCounterIncrement(context: ExtractionContext, incrementor: Node, counterName: string): boolean {
   const { ast } = context;
   const kind = ast.kindName(incrementor);
+  const operatorText =
+    kind === KindPostfixUnaryExpression
+      ? getPostfixUnaryOperatorText(ast, incrementor)
+      : kind === KindPrefixUnaryExpression
+        ? getPrefixUnaryOperatorText(ast, incrementor)
+        : undefined;
+  if (operatorText !== "++") {
+    return false;
+  }
   const operand =
     kind === KindPostfixUnaryExpression
       ? PostfixUnaryExpression_Operand(incrementor)
-      : kind === KindPrefixUnaryExpression
-        ? PrefixUnaryExpression_Operand(incrementor)
-        : undefined;
-  if (operand === undefined || ast.kindName(operand) !== KindIdentifier || ast.text(operand) !== counterName) {
-    return false;
-  }
-  const sourceText = ast.getSourceText(context.sourceFile);
-  const text = sourceText.slice(ast.pos(incrementor), ast.end(incrementor));
-  return text.includes("++");
+      : PrefixUnaryExpression_Operand(incrementor);
+  return operand !== undefined && ast.kindName(operand) === KindIdentifier && ast.text(operand) === counterName;
 }
 
 const binaryOperatorByTokenKind: ReadonlyMap<string, { operator: GpuBinaryOperator; family: "arithmetic" | "comparison" | "logical" }> =
@@ -726,11 +740,9 @@ function buildExpression(
   const kind = ast.kindName(expression);
   switch (kind) {
     case KindNumericLiteral: {
-      // The AST normalizes literal text (2.0 becomes 2), so classify the
-      // literal from its raw source slice: a decimal point or exponent marks
-      // a float32 constant, everything else is int32.
-      const sourceSlice = ast.getSourceText(context.sourceFile).slice(ast.pos(expression), ast.end(expression)).trim();
-      const literalText = sourceSlice.length > 0 ? sourceSlice : ast.text(expression);
+      // A decimal point or exponent marks a float32 constant; everything
+      // else is int32.
+      const literalText = numericLiteralSourceText(ast, expression);
       const dtype: GpuScalarType = /[.eE]/u.test(literalText) ? "float32" : "int32";
       const id = preferredName ?? nextTemp(context);
       operations.push(withSpan(context, expression, { kind: "const", result: id, dtype, value: Number(ast.text(expression)) }));
@@ -753,7 +765,7 @@ function buildExpression(
           context,
           expression,
           "gpu.kernel.tensor-value",
-          `Tensor parameter '${name}' can only be used through element access in this GPU subset.`,
+          `Tensor parameter '${name}' can only be used through element access or GPU intrinsics in device code.`,
         );
       }
       return reject(
@@ -869,13 +881,12 @@ function buildPrefixUnaryExpression(
   if (operand === undefined) {
     return reject(context, expression, "gpu.kernel.operator", "This unary operator form is not supported in device code.");
   }
-  const sourceText = ast.getSourceText(context.sourceFile);
-  const prefixText = sourceText.slice(ast.pos(expression), ast.pos(operand)).trimStart();
+  const operatorText = getPrefixUnaryOperatorText(ast, expression);
   const value = buildExpression(context, operand, scope, operations);
   if (value === undefined) {
     return undefined;
   }
-  if (prefixText.startsWith("-")) {
+  if (operatorText === "-") {
     if (value.dtype === "bool") {
       return reject(context, expression, "gpu.kernel.operator", "Negation needs a numeric operand in device code.");
     }
@@ -883,7 +894,7 @@ function buildPrefixUnaryExpression(
     operations.push(withSpan(context, expression, { kind: "unary", result: id, operator: "neg", operand: value.id, dtype: value.dtype }));
     return { id, dtype: value.dtype };
   }
-  if (prefixText.startsWith("!")) {
+  if (operatorText === "!") {
     if (value.dtype !== "bool") {
       return reject(context, expression, "gpu.kernel.operator", "Logical not needs a bool operand in device code.");
     }

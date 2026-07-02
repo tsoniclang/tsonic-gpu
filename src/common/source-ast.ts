@@ -1,4 +1,4 @@
-import type { Node } from "@tsonic/tsts";
+import type { AstReader, Node } from "@tsonic/tsts";
 
 // Kind names compared against ast.kindName(node). Field access is duck-typed
 // against the TS-Go AST data shapes; no internal TSTS modules are imported.
@@ -118,4 +118,56 @@ export function TypeReferenceNode_TypeName(node: Node | undefined): Node | undef
 
 export function VariableStatement_DeclarationList(node: Node | undefined): Node | undefined {
   return nodeField(node, "DeclarationList");
+}
+
+export function Node_Flags(node: Node | undefined): number {
+  const value = (node as unknown as { readonly Flags?: unknown } | undefined)?.Flags;
+  return typeof value === "number" ? value : 0;
+}
+
+// TS-Go NodeFlags: NodeFlagsLet = 1 << 0, NodeFlagsConst = 1 << 1, matching
+// upstream TypeScript NodeFlags for variable declaration lists.
+const nodeFlagsConst = 2;
+
+export function isConstVariableDeclarationList(node: Node | undefined): boolean {
+  return (Node_Flags(node) & nodeFlagsConst) !== 0;
+}
+
+// Unary expressions expose their operator as a raw numeric Kind, which the
+// public AstReader cannot name. Follow the reference target packs: read the
+// operator text from the source span between the node and its operand.
+export function getPrefixUnaryOperatorText(ast: AstReader, node: Node): string | undefined {
+  const operand = PrefixUnaryExpression_Operand(node);
+  const sourceText = ast.getSourceText(ast.getSourceFile(node));
+  const start = ast.pos(node);
+  const end = operand === undefined ? ast.end(node) : ast.pos(operand);
+  const prefixText = start < 0 || end < start ? "" : sourceText.slice(start, end).trimStart();
+  for (const operator of ["++", "--", "!", "-", "+"]) {
+    if (prefixText.startsWith(operator)) {
+      return operator;
+    }
+  }
+  return undefined;
+}
+
+export function getPostfixUnaryOperatorText(ast: AstReader, node: Node): string | undefined {
+  const operand = PostfixUnaryExpression_Operand(node);
+  const sourceText = ast.getSourceText(ast.getSourceFile(node));
+  const start = operand === undefined ? ast.pos(node) : ast.end(operand);
+  const end = ast.end(node);
+  const postfixText = start < 0 || end < start ? "" : sourceText.slice(start, end).trimStart();
+  for (const operator of ["++", "--"]) {
+    if (postfixText.startsWith(operator)) {
+      return operator;
+    }
+  }
+  return undefined;
+}
+
+// The AST normalizes numeric literal text (2.0 becomes 2), so dtype
+// classification must read the literal as written in the source.
+export function numericLiteralSourceText(ast: AstReader, node: Node): string {
+  const sourceText = ast.getSourceText(ast.getSourceFile(node));
+  const slice = sourceText.slice(ast.pos(node), ast.end(node)).trim();
+  return slice.length > 0 ? slice : ast.text(node);
 }

@@ -149,7 +149,7 @@ export const spinFor = kernel(function spinFor(out: Float32Tensor) {
   assert.ok(capabilityIds(forResult.diagnostics).includes("gpu.kernel.unbounded-loop"));
 });
 
-test("mutable locals reject in the initial GPU subset", () => {
+test("mutable locals reject", () => {
   const source = `import { kernel, gpu } from "@tsonic/gpu/lang.js";
 import type { Float32Tensor } from "@acme/tensor";
 

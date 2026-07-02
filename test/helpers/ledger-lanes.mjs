@@ -110,6 +110,15 @@ export const k = kernel(function k(a: Float32Tensor, out: Float32Tensor) {
 `,
   ),
   lane(
+    "kernel assigned to a let binding",
+    "gpu.kernel.declaration-form",
+    `export let k = kernel(function k(a: Float32Tensor, out: Float32Tensor) {
+  const i = gpu.globalId(0);
+  out[i] = a[i];
+});
+`,
+  ),
+  lane(
     "block-scoped binding shadowing a kernel value",
     "gpu.kernel.binding",
     `export const k = kernel(function k(a: Float32Tensor, out: Float32Tensor) {
