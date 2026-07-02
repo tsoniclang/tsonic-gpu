@@ -1,5 +1,5 @@
 import { defineExtensionFactKey } from "@tsonic/tsts";
-import type { GpuMathIntrinsic, GpuThreadIndexSpace } from "../../ir/ir.js";
+import type { GpuMathIntrinsic, GpuReduceOperator, GpuThreadIndexSpace } from "../../ir/ir.js";
 import type { GpuScalarType } from "../../ir/scalar-types.js";
 import type { GpuDeviceDomain } from "../../ir/tensor.js";
 
@@ -40,7 +40,8 @@ export const gpuScalarParameterFactKey = defineExtensionFactKey<GpuScalarParamet
 
 export type GpuIntrinsicDescriptor =
   | { readonly kind: "thread-index"; readonly space: GpuThreadIndexSpace }
-  | { readonly kind: "math"; readonly name: GpuMathIntrinsic; readonly dtype: GpuScalarType };
+  | { readonly kind: "math"; readonly name: GpuMathIntrinsic; readonly dtype: GpuScalarType }
+  | { readonly kind: "block-reduce"; readonly operator: GpuReduceOperator; readonly dtype: GpuScalarType };
 
 export interface GpuIntrinsicCallFact {
   readonly intrinsic: GpuIntrinsicDescriptor;
@@ -55,6 +56,9 @@ export const gpuIntrinsicCallFactKey = defineExtensionFactKey<GpuIntrinsicCallFa
     }
     if (left.intrinsic.kind === "math" && right.intrinsic.kind === "math") {
       return left.intrinsic.name === right.intrinsic.name && left.intrinsic.dtype === right.intrinsic.dtype;
+    }
+    if (left.intrinsic.kind === "block-reduce" && right.intrinsic.kind === "block-reduce") {
+      return left.intrinsic.operator === right.intrinsic.operator && left.intrinsic.dtype === right.intrinsic.dtype;
     }
     return false;
   },

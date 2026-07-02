@@ -45,6 +45,23 @@ function threadIndexMember(memberName: string) {
   } as const;
 }
 
+function blockReduceMember(memberName: string) {
+  return {
+    id: gpuMemberId(memberName),
+    name: memberName,
+    kind: "method",
+    static: true,
+    signatures: [
+      {
+        id: `${gpuMemberId(memberName)}(values)`,
+        name: memberName,
+        parameters: [{ name: "values", type: { kind: "unknown" } }],
+        returnType: float32Type,
+      },
+    ],
+  } as const;
+}
+
 function mathMember(memberName: string) {
   return {
     id: gpuMemberId(memberName),
@@ -92,6 +109,8 @@ export function gpuLangModuleDefinition(): GpuProviderModuleDefinition {
           mathMember("sqrt"),
           mathMember("exp"),
           mathMember("tanh"),
+          blockReduceMember("blockReduceSum"),
+          blockReduceMember("blockReduceMax"),
         ],
       },
     ],
@@ -106,6 +125,8 @@ export function gpuLangIntrinsicRows(): readonly GpuLangIntrinsicRow[] {
     { memberId: gpuMemberId("sqrt"), intrinsic: { kind: "math", name: "sqrt", dtype: "float32" } },
     { memberId: gpuMemberId("exp"), intrinsic: { kind: "math", name: "exp", dtype: "float32" } },
     { memberId: gpuMemberId("tanh"), intrinsic: { kind: "math", name: "tanh", dtype: "float32" } },
+    { memberId: gpuMemberId("blockReduceSum"), intrinsic: { kind: "block-reduce", operator: "sum", dtype: "float32" } },
+    { memberId: gpuMemberId("blockReduceMax"), intrinsic: { kind: "block-reduce", operator: "max", dtype: "float32" } },
   ];
 }
 

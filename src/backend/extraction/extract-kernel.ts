@@ -313,6 +313,11 @@ function collectTensorAccess(block: GpuIrBlock, reads: Set<string>, writes: Set<
       case "atomic":
         writes.add(operation.tensor);
         break;
+      case "reduce":
+        // Extraction only emits reduces over tensor parameters; names that
+        // are plain values simply never match a tensor parameter.
+        reads.add(operation.operand);
+        break;
       case "if":
         collectTensorAccess(operation.then, reads, writes);
         if (operation.else !== undefined) {
@@ -931,6 +936,46 @@ function buildCallExpression(
       withSpan(context, expression, { kind: "thread-index", result: id, space: intrinsicFact.intrinsic.space, dimension }),
     );
     return { id, dtype: "int32" };
+  }
+  if (intrinsicFact.intrinsic.kind === "block-reduce") {
+    const [tensorArgument] = callArguments;
+    if (callArguments.length !== 1 || tensorArgument === undefined || ast.kindName(tensorArgument) !== KindIdentifier) {
+      return reject(
+        context,
+        expression,
+        "gpu.kernel.reduce-operand",
+        "Block reduce intrinsics take exactly one tensor parameter as their operand.",
+      );
+    }
+    const tensor = context.tensors.get(ast.text(tensorArgument));
+    if (tensor === undefined) {
+      return reject(
+        context,
+        tensorArgument,
+        "gpu.kernel.reduce-operand",
+        `'${ast.text(tensorArgument)}' is not a tensor parameter of this kernel.`,
+      );
+    }
+    if (tensor.fact.elementType !== intrinsicFact.intrinsic.dtype) {
+      return reject(
+        context,
+        tensorArgument,
+        "gpu.kernel.mixed-dtype",
+        `Block reduce over '${intrinsicFact.intrinsic.dtype}' cannot consume tensor '${tensor.name}' with element dtype '${tensor.fact.elementType}'.`,
+      );
+    }
+    const id = preferredName ?? nextTemp(context);
+    operations.push(
+      withSpan(context, expression, {
+        kind: "reduce",
+        result: id,
+        operator: intrinsicFact.intrinsic.operator,
+        operand: tensor.name,
+        scope: "block",
+        dtype: intrinsicFact.intrinsic.dtype,
+      }),
+    );
+    return { id, dtype: intrinsicFact.intrinsic.dtype };
   }
   const operands: string[] = [];
   for (const argument of callArguments) {

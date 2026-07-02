@@ -77,6 +77,44 @@ export function acmeTensorPackage() {
               },
             ],
           },
+          {
+            id: "@acme/tensor::Float32Matrix",
+            name: "Float32Matrix",
+            kind: "class",
+            members: [
+              {
+                id: "@acme/tensor::Float32Matrix.indexer",
+                name: "indexer",
+                kind: "indexer",
+                signatures: [
+                  {
+                    id: "@acme/tensor::Float32Matrix.indexer(index)",
+                    parameters: [{ name: "index", type: { kind: "number" } }],
+                    returnType: { kind: "source-primitive", name: "float32" },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            id: "@acme/tensor::Float32HostTensor",
+            name: "Float32HostTensor",
+            kind: "class",
+            members: [
+              {
+                id: "@acme/tensor::Float32HostTensor.indexer",
+                name: "indexer",
+                kind: "indexer",
+                signatures: [
+                  {
+                    id: "@acme/tensor::Float32HostTensor.indexer(index)",
+                    parameters: [{ name: "index", type: { kind: "number" } }],
+                    returnType: { kind: "source-primitive", name: "float32" },
+                  },
+                ],
+              },
+            ],
+          },
         ],
       },
     ],
@@ -84,6 +122,8 @@ export function acmeTensorPackage() {
       { exportId: "@acme/tensor::Float32Tensor", elementType: "float32", rank: 1, device: "cuda" },
       { exportId: "@acme/tensor::Int32Tensor", elementType: "int32", rank: 1, device: "cuda" },
       { exportId: "@acme/tensor::Float64Tensor", elementType: "float64", rank: 1, device: "cuda" },
+      { exportId: "@acme/tensor::Float32Matrix", elementType: "float32", rank: 2, device: "cuda" },
+      { exportId: "@acme/tensor::Float32HostTensor", elementType: "float32", rank: 1, device: "cpu" },
     ],
   });
 }
@@ -93,9 +133,9 @@ export const defaultGpuTarget = Object.freeze({
   options: Object.freeze({ backendId: "fake", hostTargetId: "python" }),
 });
 
-export function createGpuSession({ files, target = defaultGpuTarget, packages = [], entryPoint = "index.ts", hosts } = {}) {
+export function createGpuSession({ files, target = defaultGpuTarget, packages = [], entryPoint = "index.ts", hosts, backends } = {}) {
   const pack = createGpuTargetPack({
-    backends: [createFakeGpuBackend()],
+    backends: backends ?? [createFakeGpuBackend()],
     hosts: hosts ?? [createFakeGpuHostIntegration("python")],
   });
   const project = { entryPoint, targets: [target] };
@@ -145,9 +185,9 @@ export function checkGpuSession(harness, fileNames) {
   return session.finalizeExtensions();
 }
 
-export function compileGpu({ files, target = defaultGpuTarget, packages = [], entryPoint = "index.ts", hosts }) {
+export function compileGpu({ files, target = defaultGpuTarget, packages = [], entryPoint = "index.ts", hosts, backends }) {
   const resolvedPackages = packages.length === 0 ? [acmeTensorPackage()] : packages;
-  const harness = createGpuSession({ files, target, packages: resolvedPackages, entryPoint, hosts });
+  const harness = createGpuSession({ files, target, packages: resolvedPackages, entryPoint, hosts, backends });
   const extensionHost = checkGpuSession(harness);
   const input = createGpuCompileInputFromSession({
     session: harness.session,
