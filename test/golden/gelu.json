@@ -1,0 +1,200 @@
+{
+  "name": "gpu_kernels",
+  "kernels": [
+    {
+      "name": "geluApprox",
+      "parameters": [
+        {
+          "kind": "tensor",
+          "name": "x",
+          "role": "input",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 1,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "x_dim0"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "readonly",
+            "aliasing": "noalias"
+          }
+        },
+        {
+          "kind": "tensor",
+          "name": "out",
+          "role": "output",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 1,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "out_dim0"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "mutable",
+            "aliasing": "noalias"
+          }
+        }
+      ],
+      "launch": {
+        "grid": [
+          {
+            "kind": "symbol",
+            "name": "out_dim0"
+          }
+        ],
+        "streamPolicy": "default",
+        "devicePolicy": "single-device"
+      },
+      "effects": [
+        {
+          "kind": "read",
+          "parameter": "x"
+        },
+        {
+          "kind": "write",
+          "parameter": "out"
+        }
+      ],
+      "body": {
+        "operations": [
+          {
+            "kind": "thread-index",
+            "result": "i",
+            "space": "global",
+            "dimension": 0
+          },
+          {
+            "kind": "load",
+            "result": "v",
+            "tensor": "x",
+            "indices": [
+              "i"
+            ],
+            "dtype": "float32"
+          },
+          {
+            "kind": "const",
+            "result": "%1",
+            "dtype": "float32",
+            "value": 0.5
+          },
+          {
+            "kind": "binary",
+            "result": "%2",
+            "operator": "mul",
+            "left": "%1",
+            "right": "v",
+            "dtype": "float32"
+          },
+          {
+            "kind": "const",
+            "result": "%3",
+            "dtype": "float32",
+            "value": 1
+          },
+          {
+            "kind": "const",
+            "result": "%4",
+            "dtype": "float32",
+            "value": 0.79788456
+          },
+          {
+            "kind": "const",
+            "result": "%5",
+            "dtype": "float32",
+            "value": 0.044715
+          },
+          {
+            "kind": "binary",
+            "result": "%6",
+            "operator": "mul",
+            "left": "%5",
+            "right": "v",
+            "dtype": "float32"
+          },
+          {
+            "kind": "binary",
+            "result": "%7",
+            "operator": "mul",
+            "left": "%6",
+            "right": "v",
+            "dtype": "float32"
+          },
+          {
+            "kind": "binary",
+            "result": "%8",
+            "operator": "mul",
+            "left": "%7",
+            "right": "v",
+            "dtype": "float32"
+          },
+          {
+            "kind": "binary",
+            "result": "%9",
+            "operator": "add",
+            "left": "v",
+            "right": "%8",
+            "dtype": "float32"
+          },
+          {
+            "kind": "binary",
+            "result": "%10",
+            "operator": "mul",
+            "left": "%4",
+            "right": "%9",
+            "dtype": "float32"
+          },
+          {
+            "kind": "intrinsic",
+            "result": "%11",
+            "name": "tanh",
+            "operands": [
+              "%10"
+            ],
+            "dtype": "float32"
+          },
+          {
+            "kind": "binary",
+            "result": "%12",
+            "operator": "add",
+            "left": "%3",
+            "right": "%11",
+            "dtype": "float32"
+          },
+          {
+            "kind": "binary",
+            "result": "%13",
+            "operator": "mul",
+            "left": "%2",
+            "right": "%12",
+            "dtype": "float32"
+          },
+          {
+            "kind": "store",
+            "tensor": "out",
+            "indices": [
+              "i"
+            ],
+            "value": "%13"
+          }
+        ]
+      }
+    }
+  ]
+}

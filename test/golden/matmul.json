@@ -1,0 +1,213 @@
+{
+  "name": "gpu_kernels",
+  "kernels": [
+    {
+      "name": "matmul",
+      "parameters": [
+        {
+          "kind": "tensor",
+          "name": "a",
+          "role": "input",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 2,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "M"
+              },
+              {
+                "kind": "symbol",
+                "name": "K"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "readonly",
+            "aliasing": "noalias"
+          }
+        },
+        {
+          "kind": "tensor",
+          "name": "b",
+          "role": "input",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 2,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "K"
+              },
+              {
+                "kind": "symbol",
+                "name": "N"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "readonly",
+            "aliasing": "noalias"
+          }
+        },
+        {
+          "kind": "tensor",
+          "name": "c",
+          "role": "output",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 2,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "M"
+              },
+              {
+                "kind": "symbol",
+                "name": "N"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "mutable",
+            "aliasing": "noalias"
+          }
+        }
+      ],
+      "launch": {
+        "grid": [
+          {
+            "kind": "symbol",
+            "name": "M"
+          },
+          {
+            "kind": "symbol",
+            "name": "N"
+          }
+        ],
+        "streamPolicy": "default",
+        "devicePolicy": "single-device"
+      },
+      "effects": [
+        {
+          "kind": "read",
+          "parameter": "a"
+        },
+        {
+          "kind": "read",
+          "parameter": "b"
+        },
+        {
+          "kind": "write",
+          "parameter": "c"
+        }
+      ],
+      "body": {
+        "operations": [
+          {
+            "kind": "thread-index",
+            "result": "row",
+            "space": "global",
+            "dimension": 0
+          },
+          {
+            "kind": "thread-index",
+            "result": "col",
+            "space": "global",
+            "dimension": 1
+          },
+          {
+            "kind": "const",
+            "result": "%1",
+            "dtype": "float32",
+            "value": 0
+          },
+          {
+            "kind": "local",
+            "result": "acc",
+            "initial": "%1",
+            "dtype": "float32"
+          },
+          {
+            "kind": "const",
+            "result": "%2",
+            "dtype": "int32",
+            "value": 0
+          },
+          {
+            "kind": "loop",
+            "counter": "k",
+            "lowerBound": "%2",
+            "upperBound": "K",
+            "body": {
+              "operations": [
+                {
+                  "kind": "load",
+                  "result": "%3",
+                  "tensor": "a",
+                  "indices": [
+                    "row",
+                    "k"
+                  ],
+                  "dtype": "float32"
+                },
+                {
+                  "kind": "load",
+                  "result": "%4",
+                  "tensor": "b",
+                  "indices": [
+                    "k",
+                    "col"
+                  ],
+                  "dtype": "float32"
+                },
+                {
+                  "kind": "binary",
+                  "result": "%5",
+                  "operator": "mul",
+                  "left": "%3",
+                  "right": "%4",
+                  "dtype": "float32"
+                },
+                {
+                  "kind": "binary",
+                  "result": "%6",
+                  "operator": "add",
+                  "left": "acc",
+                  "right": "%5",
+                  "dtype": "float32"
+                },
+                {
+                  "kind": "assign",
+                  "target": "acc",
+                  "value": "%6"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "store",
+            "tensor": "c",
+            "indices": [
+              "row",
+              "col"
+            ],
+            "value": "acc"
+          }
+        ]
+      }
+    }
+  ]
+}
