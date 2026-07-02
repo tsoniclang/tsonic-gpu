@@ -23,21 +23,12 @@ export function missingGpuFactDiagnostic(
   return baseGpuDiagnostic(input, "GPU_MISSING_TARGET_FACT", capabilityId, message);
 }
 
-export function kernelExtractionUnavailableDiagnostic(
-  input: GpuDiagnosticInput,
-  kernelName: string,
-  backendId: string,
-): TargetDiagnostic {
-  const base = baseGpuDiagnostic(
-    input,
-    "GPU_KERNEL_EXTRACTION_UNAVAILABLE",
-    "gpu.kernel.extraction",
-    `GPU kernel '${kernelName}' cannot be compiled yet: kernel extraction is not implemented. The GPU target fails closed instead of guessing.`,
-  );
-  return {
-    ...base,
-    evidence: [...(base.evidence ?? []), `gpu.kernel=${kernelName}`, `gpu.backend=${backendId}`],
-  };
+export function gpuSourceSpanForNode(
+  ast: AstReader,
+  sourceFile: SourceFile,
+  node: Node,
+): TargetDiagnosticSourceSpan | undefined {
+  return structuredSourceSpan(ast.getFileName(sourceFile), ast.getSourceText(sourceFile), ast.pos(node), ast.end(node));
 }
 
 function baseGpuDiagnostic(

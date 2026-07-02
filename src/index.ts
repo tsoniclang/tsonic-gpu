@@ -7,9 +7,14 @@ export {
   validateGpuTargetOptions,
 } from "./options/gpu-target-options.js";
 export { createGpuBackend } from "./backend/gpu-backend.js";
-export { planGpuArtifacts } from "./backend/planner/gpu-planner.js";
+export { gpuIrModuleName, planGpuArtifacts } from "./backend/planner/gpu-planner.js";
 export {
-  kernelExtractionUnavailableDiagnostic,
+  extractGpuKernel,
+  type GpuKernelExtractionRequest,
+  type GpuKernelExtractionResult,
+} from "./backend/extraction/extract-kernel.js";
+export {
+  gpuSourceSpanForNode,
   missingGpuFactDiagnostic,
   unsupportedGpuConstructDiagnostic,
   type GpuDiagnosticInput,
@@ -83,9 +88,42 @@ export {
   type GpuTensorType,
 } from "./ir/tensor.js";
 export { validateGpuIrModule } from "./ir/validate.js";
-export { gpuExtensionId, gpuKernelDeclarationFactKey, type GpuKernelDeclarationFact } from "./source/gpu-facts/keys.js";
+export {
+  gpuExtensionId,
+  gpuIntrinsicCallFactKey,
+  gpuKernelDeclarationFactKey,
+  gpuScalarParameterFactKey,
+  gpuTensorParameterFactKey,
+  type GpuIntrinsicCallFact,
+  type GpuIntrinsicDescriptor,
+  type GpuKernelDeclarationFact,
+  type GpuScalarParameterFact,
+  type GpuTensorParameterFact,
+} from "./source/gpu-facts/keys.js";
+export {
+  createGpuLangBindingExtension,
+  gpuLangIntrinsicRows,
+  gpuLangKernelExportId,
+  gpuLangModuleDefinition,
+  gpuLangModuleOwnership,
+  gpuLangModuleSpecifier,
+  type GpuLangIntrinsicRow,
+} from "./source/gpu-lang/index.js";
+export {
+  collectGpuTensorTypeRows,
+  createGpuProviderPackage,
+  createGpuProviderPackageBindingProvider,
+  isGpuTensorTypeContributor,
+  type GpuProviderModuleDefinition,
+  type GpuProviderPackageDefinition,
+  type GpuProviderPackageImplementation,
+  type GpuTensorTypeContributor,
+  type GpuTensorTypeRow,
+} from "./source/provider-packages/index.js";
 export {
   createGpuTargetSemanticsExtension,
   gpuTargetSemanticsExtensionId,
+  recordGpuFactsBeforeFinalization,
 } from "./source/gpu-target-semantics/index.js";
+export { createGpuCompileInputFromSession, type GpuCompileInputOptions } from "./session/compile-input.js";
 export { createGpuToolchain } from "./toolchain/gpu-toolchain.js";

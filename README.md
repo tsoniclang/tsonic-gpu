@@ -26,8 +26,10 @@ and plug in through explicit contracts.
 - `src/ir/` — GPU IR structures, tensor/dtype/shape/device model, launch ABI, effects, and IR validation.
 - `src/capabilities/` — backend capability sets and IR-to-capability matching.
 - `src/backends/` — the backend plugin contract, registry, and the fake backend used by tests.
-- `src/backend/` — the fail-closed target backend and planner.
-- `src/source/` — GPU extension fact keys and the target semantics extension.
+- `src/backend/` — the fail-closed target backend, planner, and kernel extraction (source AST to GPU IR).
+- `src/source/` — GPU fact keys, the GPU language surface (`kernel` marker and `gpu` intrinsics),
+  the generic tensor provider-package model, and the target semantics extension.
+- `src/session/` — a TSTS session-to-compile-input bridge for integration tests and tooling.
 - `test/architecture/` — scanners that enforce the boundaries above.
 
 ## Build and Test

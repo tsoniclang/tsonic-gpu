@@ -29,13 +29,14 @@ test("GPU target pack registers with the target registry", () => {
   assert.notEqual(pack.provider, undefined);
 });
 
-test("provider composes the GPU target semantics extension", () => {
+test("provider composes the GPU lang and target semantics extensions", () => {
   const pack = createGpuTargetPack();
   const target = { id: gpuTargetId, options: validOptions };
   const extensions = pack.provider.createExtensions(providerContext(pack, target));
-  assert.equal(extensions.length, 1);
-  assert.equal(extensions[0].identity.id, gpuTargetSemanticsExtensionId);
-  assert.equal(extensions[0].composition.target, gpuTargetId);
+  const identities = extensions.map((extension) => extension.identity.id);
+  assert.deepEqual(identities, ["tsonic.gpu.lang", gpuTargetSemanticsExtensionId]);
+  const semantics = extensions.find((extension) => extension.identity.id === gpuTargetSemanticsExtensionId);
+  assert.equal(semantics.composition.target, gpuTargetId);
 });
 
 test("missing backend selection fails at every pack entry point", () => {

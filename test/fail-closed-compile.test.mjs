@@ -18,8 +18,8 @@ test("non-kernel host code is ignored by the GPU target", () => {
   assert.deepEqual(result.diagnostics, []);
 });
 
-test("explicit kernel marker fails closed until extraction exists", () => {
-  const text = "export const add = kernel(function add() {});\n";
+test("kernel marker facts without an extractable declaration fail closed", () => {
+  const text = "export const add = kernel(42);\n";
   const input = fakeCompileInput({
     sourceFiles: [
       fakeSourceFile({
@@ -40,12 +40,10 @@ test("explicit kernel marker fails closed until extraction exists", () => {
   assert.equal(result.artifacts.length, 0);
   assert.equal(result.diagnostics.length, 1);
   const diagnostic = result.diagnostics[0];
-  assert.equal(diagnostic.code, "GPU_KERNEL_EXTRACTION_UNAVAILABLE");
+  assert.equal(diagnostic.code, "GPU_UNSUPPORTED_KERNEL_OPERATION");
   assert.equal(diagnostic.category, "error");
   assert.equal(diagnostic.source, "tsonic-gpu");
-  assert.ok(diagnostic.evidence.includes("target.capability=gpu.kernel.extraction"));
-  assert.ok(diagnostic.evidence.includes("gpu.kernel=add"));
-  assert.ok(diagnostic.evidence.includes("gpu.backend=fake"));
+  assert.ok(diagnostic.evidence.includes("target.capability=gpu.kernel.declaration-form"));
   assert.deepEqual(diagnostic.sourceSpan, {
     fileName: "src/kernels.ts",
     line: 1,
@@ -57,7 +55,7 @@ test("explicit kernel marker fails closed until extraction exists", () => {
 
 test("source spans convert UTF-8 byte offsets across multi-byte text and newlines", () => {
   const line1 = "const café = 1;"; // 'é' is 2 UTF-8 bytes
-  const line2 = "export const k = kernel(function k() {});";
+  const line2 = "export const k = kernel(42);";
   const text = `${line1}\n${line2}\n`;
   const line1Bytes = 16; // 15 chars + 1 extra byte for 'é'
   const pos = line1Bytes + 1; // start of line 2
@@ -84,7 +82,7 @@ test("source spans convert UTF-8 byte offsets across multi-byte text and newline
   });
 });
 
-test("multiple kernels each fail closed with their own diagnostic", () => {
+test("multiple broken kernels each fail closed with their own diagnostic", () => {
   const text = "a;\nb;\n";
   const input = fakeCompileInput({
     sourceFiles: [
@@ -101,5 +99,5 @@ test("multiple kernels each fail closed with their own diagnostic", () => {
   const result = planGpuArtifacts(input, createFakeGpuBackend());
   assert.equal(result.artifacts.length, 0);
   assert.equal(result.diagnostics.length, 2);
-  assert.ok(result.diagnostics.every((diagnostic) => diagnostic.code === "GPU_KERNEL_EXTRACTION_UNAVAILABLE"));
+  assert.ok(result.diagnostics.every((diagnostic) => diagnostic.code === "GPU_UNSUPPORTED_KERNEL_OPERATION"));
 });

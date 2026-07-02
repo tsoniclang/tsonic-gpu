@@ -11,6 +11,7 @@ import { createGpuBackend } from "../backend/gpu-backend.js";
 import type { GpuBackendPlugin } from "../backends/backend-contract.js";
 import { createGpuBackendRegistry } from "../backends/backend-registry.js";
 import { readGpuBackendId, validateGpuTargetOptions } from "../options/gpu-target-options.js";
+import { createGpuLangBindingExtension, gpuLangModuleOwnership } from "../source/gpu-lang/index.js";
 import { createGpuTargetSemanticsExtension } from "../source/gpu-target-semantics/index.js";
 import { createGpuToolchain } from "../toolchain/gpu-toolchain.js";
 import { gpuTargetId } from "./target-id.js";
@@ -32,9 +33,10 @@ export function createGpuTargetPack(config: GpuTargetPackConfig = {}): TargetPac
     provider: {
       id: "gpu-provider",
       displayName: "GPU target provider",
+      moduleOwnership: gpuLangModuleOwnership(),
       createExtensions(context: TargetProviderContext): readonly CompilerExtension[] {
         validateGpuTargetOptions(context.target);
-        return [createGpuTargetSemanticsExtension(context)];
+        return [createGpuLangBindingExtension(), createGpuTargetSemanticsExtension(context)];
       },
     },
     createBackend(context: TargetBackendContext): TargetBackend {
