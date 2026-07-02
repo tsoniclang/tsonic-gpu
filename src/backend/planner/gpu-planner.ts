@@ -1,5 +1,6 @@
-import type { TargetArtifact, TargetCompileInput, TargetCompileResult, TargetDiagnostic } from "@tsonic/target-api";
+import type { TargetCompileInput, TargetCompileResult, TargetDiagnostic } from "@tsonic/target-api";
 import type { GpuBackendPlugin } from "../../backends/backend-contract.js";
+import { createGpuHostRegistry, type GpuHostRegistry } from "../../hosts/host-registry.js";
 import type { GpuIrFunction, GpuIrModule } from "../../ir/ir.js";
 import { readGpuHostTargetId } from "../../options/gpu-target-options.js";
 import { gpuKernelDeclarationFactKey } from "../../source/gpu-facts/keys.js";
@@ -7,10 +8,16 @@ import { extractGpuKernel } from "../extraction/extract-kernel.js";
 
 export const gpuIrModuleName = "gpu_kernels";
 
+const emptyHostRegistry = createGpuHostRegistry([]);
+
 // The GPU target contributes nothing for ordinary host code: host statements
 // belong to the selected host target. Only explicit kernel marker facts enter
 // GPU compilation, and every kernel either extracts fully or fails closed.
-export function planGpuArtifacts(input: TargetCompileInput, backend: GpuBackendPlugin): TargetCompileResult {
+export function planGpuArtifacts(
+  input: TargetCompileInput,
+  backend: GpuBackendPlugin,
+  hosts: GpuHostRegistry = emptyHostRegistry,
+): TargetCompileResult {
   const diagnostics: TargetDiagnostic[] = [];
   const kernels: GpuIrFunction[] = [];
   const ast = input.ast;
@@ -44,28 +51,38 @@ export function planGpuArtifacts(input: TargetCompileInput, backend: GpuBackendP
   }
 
   const hostTargetId = readGpuHostTargetId(input.target);
-  const lowered = backend.lower(module, { hostTargetId });
-  const artifacts: TargetArtifact[] = [
-    ...lowered.modules.map((moduleArtifact) => ({
-      kind: "source" as const,
-      language: moduleArtifact.language,
-      path: moduleArtifact.path,
-      text: moduleArtifact.text,
-    })),
-    {
-      kind: "configuration" as const,
-      path: "gpu/launch-plan.json",
-      text: `${JSON.stringify(
+  const hostIntegration = hosts.get(hostTargetId);
+  if (hostIntegration === undefined) {
+    return {
+      artifacts: [],
+      diagnostics: [
         {
-          backend: backend.id,
-          hostTarget: hostTargetId,
-          dependencies: lowered.dependencies,
-          launchWrappers: lowered.launchWrappers,
+          code: "GPU_HOST_INTEGRATION_MISSING",
+          category: "error",
+          source: "tsonic-gpu",
+          message: `No GPU host integration is registered for host target '${hostTargetId}'. The GPU core does not decide host project layout; register a host integration for '${hostTargetId}'.`,
+          evidence: [
+            "target.capability=gpu.host.integration",
+            `gpu.hostTarget=${hostTargetId}`,
+            `gpu.backend=${backend.id}`,
+            `gpu.hosts.registered=${hosts.ids().length === 0 ? "(none)" : hosts.ids().join(",")}`,
+          ],
         },
-        null,
-        2,
-      )}\n`,
-    },
-  ];
-  return { artifacts, diagnostics: [] };
+      ],
+    };
+  }
+
+  const lowered = backend.lower(module, { hostTargetId });
+  const packaged = hostIntegration.packageArtifacts({
+    backendId: backend.id,
+    hostTargetId,
+    moduleName: module.name,
+    modules: lowered.modules,
+    dependencies: lowered.dependencies,
+    launchWrappers: lowered.launchWrappers,
+  });
+  if (packaged.diagnostics.length > 0) {
+    return { artifacts: [], diagnostics: [...packaged.diagnostics] };
+  }
+  return { artifacts: packaged.artifacts, diagnostics: [] };
 }

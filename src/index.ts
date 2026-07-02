@@ -30,6 +30,13 @@ export {
 export { createGpuBackendRegistry, type GpuBackendRegistry } from "./backends/backend-registry.js";
 export { createFakeGpuBackend, fakeGpuBackendId } from "./backends/fake/fake-backend.js";
 export {
+  type GpuHostArtifactRequest,
+  type GpuHostIntegration,
+  type GpuHostPackagingResult,
+} from "./hosts/host-contract.js";
+export { createGpuHostRegistry, type GpuHostRegistry } from "./hosts/host-registry.js";
+export { createFakeGpuHostIntegration } from "./hosts/fake/fake-host.js";
+export {
   gpuAtomicCapability,
   gpuBarrierBlockCapability,
   gpuBinaryOperatorCapability,

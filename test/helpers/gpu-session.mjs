@@ -5,6 +5,7 @@ import { createCompilerSessionFromFiles, formatDiagnostics } from "@tsonic/tsts"
 import { createTsonicCoreSourceExtension } from "@tsonic/source-core";
 import {
   createFakeGpuBackend,
+  createFakeGpuHostIntegration,
   createGpuCompileInputFromSession,
   createGpuProviderPackage,
   createGpuTargetPack,
@@ -92,8 +93,11 @@ export const defaultGpuTarget = Object.freeze({
   options: Object.freeze({ backendId: "fake", hostTargetId: "python" }),
 });
 
-export function createGpuSession({ files, target = defaultGpuTarget, packages = [], entryPoint = "index.ts" } = {}) {
-  const pack = createGpuTargetPack({ backends: [createFakeGpuBackend()] });
+export function createGpuSession({ files, target = defaultGpuTarget, packages = [], entryPoint = "index.ts", hosts } = {}) {
+  const pack = createGpuTargetPack({
+    backends: [createFakeGpuBackend()],
+    hosts: hosts ?? [createFakeGpuHostIntegration("python")],
+  });
   const project = { entryPoint, targets: [target] };
   const providerContext = {
     project,
@@ -141,9 +145,9 @@ export function checkGpuSession(harness, fileNames) {
   return session.finalizeExtensions();
 }
 
-export function compileGpu({ files, target = defaultGpuTarget, packages = [], entryPoint = "index.ts" }) {
+export function compileGpu({ files, target = defaultGpuTarget, packages = [], entryPoint = "index.ts", hosts }) {
   const resolvedPackages = packages.length === 0 ? [acmeTensorPackage()] : packages;
-  const harness = createGpuSession({ files, target, packages: resolvedPackages, entryPoint });
+  const harness = createGpuSession({ files, target, packages: resolvedPackages, entryPoint, hosts });
   const extensionHost = checkGpuSession(harness);
   const input = createGpuCompileInputFromSession({
     session: harness.session,

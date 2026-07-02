@@ -721,10 +721,14 @@ function buildExpression(
   const kind = ast.kindName(expression);
   switch (kind) {
     case KindNumericLiteral: {
-      const text = ast.text(expression);
-      const dtype: GpuScalarType = /[.eE]/u.test(text) ? "float32" : "int32";
+      // The AST normalizes literal text (2.0 becomes 2), so classify the
+      // literal from its raw source slice: a decimal point or exponent marks
+      // a float32 constant, everything else is int32.
+      const sourceSlice = ast.getSourceText(context.sourceFile).slice(ast.pos(expression), ast.end(expression)).trim();
+      const literalText = sourceSlice.length > 0 ? sourceSlice : ast.text(expression);
+      const dtype: GpuScalarType = /[.eE]/u.test(literalText) ? "float32" : "int32";
       const id = preferredName ?? nextTemp(context);
-      operations.push(withSpan(context, expression, { kind: "const", result: id, dtype, value: Number(text) }));
+      operations.push(withSpan(context, expression, { kind: "const", result: id, dtype, value: Number(ast.text(expression)) }));
       return { id, dtype };
     }
     case KindTrueKeyword:

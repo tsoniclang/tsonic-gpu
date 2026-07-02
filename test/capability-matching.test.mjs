@@ -95,6 +95,23 @@ test("tensor rank above the backend maximum is diagnosed", () => {
   assert.ok(missingCapabilityIds(diagnostics).includes("gpu.tensor.rank.3"));
 });
 
+test("reductions are accepted by a backend that reports reduction capability", () => {
+  const module = reductionModule();
+  const [kernel] = module.kernels;
+  const withReduce = {
+    backendId: "reducing",
+    maxTensorRank: 2,
+    capabilityIds: requiredCapabilitiesForKernel(kernel),
+  };
+  assert.deepEqual(matchGpuModuleAgainstCapabilities(module, withReduce), []);
+  const withoutReduce = {
+    ...withReduce,
+    capabilityIds: withReduce.capabilityIds.filter((id) => !id.startsWith("gpu.reduce.")),
+  };
+  const diagnostics = matchGpuModuleAgainstCapabilities(module, withoutReduce);
+  assert.ok(missingCapabilityIds(diagnostics).includes("gpu.reduce.sum.float32"));
+});
+
 test("capability matching is honest about custom capability sets", () => {
   const module = vectorAddModule();
   const withoutMasked = {
