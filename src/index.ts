@@ -1,0 +1,91 @@
+export { createGpuTargetPack, gpuTargetId, type GpuTargetPackConfig } from "./descriptor/gpu-target-pack.js";
+export {
+  readGpuBackendId,
+  readGpuBackendPackageName,
+  readGpuHostTargetId,
+  readGpuTypescriptCompatibilityMode,
+  validateGpuTargetOptions,
+} from "./options/gpu-target-options.js";
+export { createGpuBackend } from "./backend/gpu-backend.js";
+export { planGpuArtifacts } from "./backend/planner/gpu-planner.js";
+export {
+  kernelExtractionUnavailableDiagnostic,
+  missingGpuFactDiagnostic,
+  unsupportedGpuConstructDiagnostic,
+  type GpuDiagnosticInput,
+} from "./backend/planner/diagnostics.js";
+export {
+  type GpuBackendArtifacts,
+  type GpuBackendDependency,
+  type GpuBackendModuleArtifact,
+  type GpuBackendPlugin,
+  type GpuHostLoweringContext,
+  type GpuLaunchWrapperRequest,
+} from "./backends/backend-contract.js";
+export { createGpuBackendRegistry, type GpuBackendRegistry } from "./backends/backend-registry.js";
+export { createFakeGpuBackend, fakeGpuBackendId } from "./backends/fake/fake-backend.js";
+export {
+  gpuAtomicCapability,
+  gpuBarrierBlockCapability,
+  gpuBinaryOperatorCapability,
+  gpuControlIfCapability,
+  gpuControlLoopCapability,
+  gpuDeviceCapability,
+  gpuDtypeCapability,
+  gpuLayoutCapability,
+  gpuMathIntrinsicCapability,
+  gpuMemoryLoadCapability,
+  gpuMemoryMaskedCapability,
+  gpuMemoryStoreCapability,
+  gpuReduceCapability,
+  gpuShapeSymbolicCapability,
+  gpuTensorRankCapability,
+  gpuThreadIndexCapability,
+  gpuUnaryOperatorCapability,
+  type GpuBackendCapabilitySet,
+} from "./capabilities/capability-set.js";
+export { matchGpuModuleAgainstCapabilities, requiredCapabilitiesForKernel } from "./capabilities/match.js";
+export { gpuIrDiagnostic, type GpuIrDiagnosticInput } from "./ir/diagnostics.js";
+export { type GpuAliasingConstraint, type GpuEffect } from "./ir/effects.js";
+export {
+  type GpuAtomicOperator,
+  type GpuBinaryOperator,
+  type GpuIrBlock,
+  type GpuIrFunction,
+  type GpuIrModule,
+  type GpuIrOperation,
+  type GpuKernelParameter,
+  type GpuMathIntrinsic,
+  type GpuReduceOperator,
+  type GpuScalarParameterRole,
+  type GpuSourceSpan,
+  type GpuTensorParameterRole,
+  type GpuThreadIndexSpace,
+  type GpuUnaryOperator,
+} from "./ir/ir.js";
+export { type GpuDevicePolicy, type GpuLaunchPlan, type GpuStreamPolicy } from "./ir/launch.js";
+export { gpuScalarTypeIds, isGpuScalarType, type GpuScalarType } from "./ir/scalar-types.js";
+export {
+  gpuShapeBackendMetaNames,
+  gpuShapeSymbolNames,
+  type GpuShapeConstraint,
+  type GpuShapeExpr,
+} from "./ir/shape.js";
+export {
+  gpuDeviceDomains,
+  isGpuDeviceDomain,
+  type GpuAliasing,
+  type GpuDeviceDomain,
+  type GpuDeviceRef,
+  type GpuLayout,
+  type GpuMemorySpace,
+  type GpuMutability,
+  type GpuTensorType,
+} from "./ir/tensor.js";
+export { validateGpuIrModule } from "./ir/validate.js";
+export { gpuExtensionId, gpuKernelDeclarationFactKey, type GpuKernelDeclarationFact } from "./source/gpu-facts/keys.js";
+export {
+  createGpuTargetSemanticsExtension,
+  gpuTargetSemanticsExtensionId,
+} from "./source/gpu-target-semantics/index.js";
+export { createGpuToolchain } from "./toolchain/gpu-toolchain.js";
