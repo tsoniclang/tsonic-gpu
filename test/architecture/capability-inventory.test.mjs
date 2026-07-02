@@ -60,8 +60,8 @@ const capabilityCatalog = Object.freeze({
   "gpu.kernel.tensor-value": "legality-reject",
   "gpu.kernel.thread-index": "legality-reject",
   "gpu.kernel.unbounded-loop": "legality-reject",
-  // Reject lanes that checked TypeScript cannot reach today; they guard
-  // hand-authored input and future extraction growth.
+  // Reject lanes that checked TypeScript cannot reach; they guard
+  // hand-authored input and extraction paths the type checker forecloses.
   "gpu.kernel.launch": "defense-in-depth",
   "gpu.kernel.name": "defense-in-depth",
   "gpu.kernel.parameter-name": "defense-in-depth",

@@ -95,7 +95,7 @@ test("no product backend is bundled by default", async () => {
   );
 });
 
-test("the GPU pack declares no surfaces or provider packages yet", async () => {
+test("the GPU pack declares no surfaces or bundled provider packages", async () => {
   const { createGpuTargetPack } = await import("../../dist/index.js");
   const pack = createGpuTargetPack();
   assert.deepEqual(pack.surfaces ?? [], []);

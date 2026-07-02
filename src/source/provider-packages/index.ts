@@ -52,7 +52,7 @@ export interface GpuTensorTypeContributor {
 export type GpuProviderPackageImplementation = TargetProviderPackageImplementation & GpuTensorTypeContributor;
 
 // Definitions are configuration; every inconsistency fails at package
-// creation instead of surfacing later as a missing or wrong fact.
+// creation instead of surfacing as a missing or wrong fact at compile time.
 function validateGpuProviderPackageDefinition(definition: GpuProviderPackageDefinition): void {
   const packageError = (message: string): Error => new Error(`GPU provider package '${definition.id}': ${message}`);
   const moduleSpecifiers = new Set<string>();
