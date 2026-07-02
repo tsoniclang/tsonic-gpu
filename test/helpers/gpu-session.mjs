@@ -97,6 +97,50 @@ export function acmeTensorPackage() {
             ],
           },
           {
+            id: "@acme/tensor::Matrix",
+            name: "Matrix",
+            kind: "class",
+            typeParameters: [
+              { name: "R", constraints: [{ kind: "number" }] },
+              { name: "C", constraints: [{ kind: "number" }] },
+            ],
+            members: [
+              {
+                id: "@acme/tensor::Matrix.at",
+                name: "at",
+                kind: "method",
+                signatures: [
+                  {
+                    id: "@acme/tensor::Matrix.at(row,col)",
+                    name: "at",
+                    parameters: [
+                      { name: "row", type: { kind: "number" } },
+                      { name: "col", type: { kind: "number" } },
+                    ],
+                    returnType: { kind: "source-primitive", name: "float32" },
+                  },
+                ],
+              },
+              {
+                id: "@acme/tensor::Matrix.set",
+                name: "set",
+                kind: "method",
+                signatures: [
+                  {
+                    id: "@acme/tensor::Matrix.set(row,col,value)",
+                    name: "set",
+                    parameters: [
+                      { name: "row", type: { kind: "number" } },
+                      { name: "col", type: { kind: "number" } },
+                      { name: "value", type: { kind: "source-primitive", name: "float32" } },
+                    ],
+                    returnType: { kind: "void" },
+                  },
+                ],
+              },
+            ],
+          },
+          {
             id: "@acme/tensor::Float32HostTensor",
             name: "Float32HostTensor",
             kind: "class",
@@ -124,6 +168,15 @@ export function acmeTensorPackage() {
       { exportId: "@acme/tensor::Float64Tensor", elementType: "float64", rank: 1, device: "cuda" },
       { exportId: "@acme/tensor::Float32Matrix", elementType: "float32", rank: 2, device: "cuda" },
       { exportId: "@acme/tensor::Float32HostTensor", elementType: "float32", rank: 1, device: "cpu" },
+      {
+        exportId: "@acme/tensor::Matrix",
+        elementType: "float32",
+        rank: 2,
+        device: "cuda",
+        shapeSymbolArguments: [0, 1],
+        loadMember: "@acme/tensor::Matrix.at",
+        storeMember: "@acme/tensor::Matrix.set",
+      },
     ],
   });
 }

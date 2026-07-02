@@ -62,6 +62,43 @@ function blockReduceMember(memberName: string) {
   } as const;
 }
 
+function shapeDimMember() {
+  return {
+    id: gpuMemberId("dim"),
+    name: "dim",
+    kind: "method",
+    static: true,
+    signatures: [
+      {
+        id: `${gpuMemberId("dim")}(values,dimension)`,
+        name: "dim",
+        parameters: [
+          { name: "values", type: { kind: "unknown" } },
+          { name: "dimension", type: numberType },
+        ],
+        returnType: int32Type,
+      },
+    ],
+  } as const;
+}
+
+function metaParameterMember() {
+  return {
+    id: gpuMemberId("meta"),
+    name: "meta",
+    kind: "method",
+    static: true,
+    signatures: [
+      {
+        id: `${gpuMemberId("meta")}(name)`,
+        name: "meta",
+        parameters: [{ name: "name", type: { kind: "string" } }],
+        returnType: int32Type,
+      },
+    ],
+  } as const;
+}
+
 function mathMember(memberName: string) {
   return {
     id: gpuMemberId(memberName),
@@ -111,6 +148,8 @@ export function gpuLangModuleDefinition(): GpuProviderModuleDefinition {
           mathMember("tanh"),
           blockReduceMember("blockReduceSum"),
           blockReduceMember("blockReduceMax"),
+          shapeDimMember(),
+          metaParameterMember(),
         ],
       },
     ],
@@ -127,6 +166,8 @@ export function gpuLangIntrinsicRows(): readonly GpuLangIntrinsicRow[] {
     { memberId: gpuMemberId("tanh"), intrinsic: { kind: "math", name: "tanh", dtype: "float32" } },
     { memberId: gpuMemberId("blockReduceSum"), intrinsic: { kind: "block-reduce", operator: "sum", dtype: "float32" } },
     { memberId: gpuMemberId("blockReduceMax"), intrinsic: { kind: "block-reduce", operator: "max", dtype: "float32" } },
+    { memberId: gpuMemberId("dim"), intrinsic: { kind: "shape-dim" } },
+    { memberId: gpuMemberId("meta"), intrinsic: { kind: "meta-parameter" } },
   ];
 }
 

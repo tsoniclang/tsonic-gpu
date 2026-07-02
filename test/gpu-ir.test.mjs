@@ -202,6 +202,69 @@ test("effects must reference mutable tensors for writes", () => {
   assert.ok(capabilityIds(validateGpuIrModule(module)).includes("gpu.ir.effect"));
 });
 
+test("loop-carried mutable locals validate inside loops", () => {
+  const module = singleKernelModule({
+    body: {
+      operations: [
+        { kind: "const", result: "zero", dtype: "float32", value: 0 },
+        { kind: "local", result: "acc", initial: "zero", dtype: "float32" },
+        { kind: "const", result: "start", dtype: "int32", value: 0 },
+        { kind: "const", result: "limit", dtype: "int32", value: 8 },
+        {
+          kind: "loop",
+          counter: "k",
+          lowerBound: "start",
+          upperBound: "limit",
+          body: {
+            operations: [
+              { kind: "load", result: "value", tensor: "a", indices: ["k"], dtype: "float32" },
+              { kind: "binary", result: "next", operator: "add", left: "acc", right: "value", dtype: "float32" },
+              { kind: "assign", target: "acc", value: "next" },
+            ],
+          },
+        },
+        { kind: "const", result: "outIndex", dtype: "int32", value: 0 },
+        { kind: "store", tensor: "out", indices: ["outIndex"], value: "acc" },
+      ],
+    },
+  });
+  assert.deepEqual(validateGpuIrModule(module), []);
+});
+
+test("assignments outside a loop nested below the declaration reject", () => {
+  const module = singleKernelModule({
+    body: {
+      operations: [
+        { kind: "const", result: "zero", dtype: "float32", value: 0 },
+        { kind: "local", result: "acc", initial: "zero", dtype: "float32" },
+        { kind: "assign", target: "acc", value: "zero" },
+        { kind: "store", tensor: "out", indices: ["zeroIndex"], value: "acc" },
+      ],
+    },
+  });
+  assert.ok(capabilityIds(validateGpuIrModule(module)).includes("gpu.ir.assign"));
+});
+
+test("assignments to values that are not mutable locals reject", () => {
+  const module = singleKernelModule({
+    body: {
+      operations: [
+        { kind: "const", result: "zero", dtype: "float32", value: 0 },
+        { kind: "const", result: "start", dtype: "int32", value: 0 },
+        { kind: "const", result: "limit", dtype: "int32", value: 8 },
+        {
+          kind: "loop",
+          counter: "k",
+          lowerBound: "start",
+          upperBound: "limit",
+          body: { operations: [{ kind: "assign", target: "zero", value: "zero" }] },
+        },
+      ],
+    },
+  });
+  assert.ok(capabilityIds(validateGpuIrModule(module)).includes("gpu.ir.assign"));
+});
+
 test("duplicate kernel names reject", () => {
   const base = vectorAddModule();
   const module = { ...base, kernels: [base.kernels[0], base.kernels[0]] };

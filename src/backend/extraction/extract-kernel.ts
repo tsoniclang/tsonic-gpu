@@ -26,7 +26,9 @@ import {
   KindParenthesizedExpression,
   KindPostfixUnaryExpression,
   KindPrefixUnaryExpression,
+  KindPropertyAccessExpression,
   KindReturnStatement,
+  KindStringLiteral,
   KindTrueKeyword,
   KindVariableDeclaration,
   KindVariableStatement,
@@ -56,6 +58,7 @@ import {
   gpuIntrinsicCallFactKey,
   gpuKernelDeclarationFactKey,
   gpuScalarParameterFactKey,
+  gpuTensorAccessCallFactKey,
   gpuTensorParameterFactKey,
   type GpuKernelDeclarationFact,
   type GpuTensorParameterFact,
@@ -89,7 +92,9 @@ interface ExtractionContext {
   readonly sourceFile: SourceFile;
   readonly diagnostics: TargetDiagnostic[];
   readonly tensors: Map<string, TensorEntry>;
+  readonly metaParameters: Set<string>;
   tempCounter: number;
+  loopDepth: number;
 }
 
 interface ScalarValue {
@@ -97,10 +102,15 @@ interface ScalarValue {
   readonly dtype: GpuScalarType;
 }
 
+interface ScopeBinding extends ScalarValue {
+  readonly mutable: boolean;
+  readonly declaredLoopDepth: number;
+}
+
 // Bindings map source names to the IR value that carries them; a plain
-// aliasing binding (const j = i) reuses the aliased value id instead of
-// emitting a copy operation.
-type Scope = Map<string, ScalarValue>;
+// aliasing const binding (const j = i) reuses the aliased value id instead
+// of emitting a copy operation, while let bindings become mutable IR locals.
+type Scope = Map<string, ScopeBinding>;
 
 export function extractGpuKernel(request: GpuKernelExtractionRequest): GpuKernelExtractionResult {
   const context: ExtractionContext = {
@@ -109,7 +119,9 @@ export function extractGpuKernel(request: GpuKernelExtractionRequest): GpuKernel
     sourceFile: request.sourceFile,
     diagnostics: [],
     tensors: new Map(),
+    metaParameters: new Set(),
     tempCounter: 0,
+    loopDepth: 0,
   };
   const kernel = extractFromStatement(context, request.statement, request.fact);
   if (context.diagnostics.length > 0) {
@@ -190,7 +202,7 @@ function extractFromStatement(
     }
     const scalarFact = context.input.facts.getFact(parameter, gpuScalarParameterFactKey);
     if (scalarFact !== undefined) {
-      scope.set(name, { id: name, dtype: scalarFact.scalarType });
+      scope.set(name, { id: name, dtype: scalarFact.scalarType, mutable: false, declaredLoopDepth: 0 });
       parameterOrder.push(name);
       continue;
     }
@@ -253,7 +265,7 @@ function extractFromStatement(
       tensor: {
         elementType: tensorEntry.fact.elementType,
         rank: tensorEntry.fact.rank,
-        shape: tensorShape(name, tensorEntry.fact.rank),
+        shape: tensorShapeExprs(tensorEntry),
         layout: { kind: "contiguous" },
         device: { domain: tensorEntry.fact.device },
         mutability: written ? "mutable" : "readonly",
@@ -274,7 +286,8 @@ function extractFromStatement(
     ...(kernelSpan === undefined ? {} : { span: kernelSpan }),
     parameters,
     launch: {
-      grid: tensorShape(launchTensor.name, launchTensor.fact.rank),
+      grid: tensorShapeExprs(launchTensor),
+      ...(context.metaParameters.size === 0 ? {} : { metaParameters: [...context.metaParameters] }),
       streamPolicy: "default",
       devicePolicy: "single-device",
     },
@@ -283,8 +296,17 @@ function extractFromStatement(
   };
 }
 
-function tensorShape(parameterName: string, rank: number): readonly GpuShapeExpr[] {
-  return Array.from({ length: rank }, (_, dimension) => ({ kind: "symbol", name: `${parameterName}_dim${dimension}` }));
+// Declared dimension symbols (from generic tensor type arguments) win; a
+// tensor without declared symbols gets per-parameter synthesized dimensions.
+function tensorShapeSymbols(entry: TensorEntry): readonly string[] {
+  if (entry.fact.shape !== undefined && entry.fact.shape.length === entry.fact.rank) {
+    return entry.fact.shape;
+  }
+  return Array.from({ length: entry.fact.rank }, (_, dimension) => `${entry.name}_dim${dimension}`);
+}
+
+function tensorShapeExprs(entry: TensorEntry): readonly GpuShapeExpr[] {
+  return tensorShapeSymbols(entry).map((name) => ({ kind: "symbol", name }));
 }
 
 function kernelFunctionExpression(context: ExtractionContext, statement: Node): Node | undefined {
@@ -411,6 +433,7 @@ function buildLocalBindings(context: ExtractionContext, statement: Node, scope: 
     reject(context, statement, "gpu.kernel.statement", "This variable statement form is not supported in device code.");
     return;
   }
+  const isConst = isConstVariableDeclarationList(declarationList);
   ast.forEachChild(declarationList, (declaration) => {
     if (declaration === undefined || ast.kindName(declaration) !== KindVariableDeclaration) {
       return;
@@ -430,13 +453,31 @@ function buildLocalBindings(context: ExtractionContext, statement: Node, scope: 
       reject(context, declaration, "gpu.kernel.binding", `Device binding '${name}' needs an initializer.`);
       return;
     }
-    const value = buildExpression(context, initializer, scope, operations, name);
-    if (value === undefined) {
+    if (isConst) {
+      const value = buildExpression(context, initializer, scope, operations, name);
+      if (value === undefined) {
+        return;
+      }
+      scope.set(name, { ...value, mutable: false, declaredLoopDepth: context.loopDepth });
       return;
     }
-    scope.set(name, value);
+    // A let binding becomes a mutable IR local, assignable only inside a
+    // loop nested deeper than this declaration (loop-carried accumulator).
+    const initial = buildExpression(context, initializer, scope, operations);
+    if (initial === undefined) {
+      return;
+    }
+    operations.push(withSpan(context, declaration, { kind: "local", result: name, initial: initial.id, dtype: initial.dtype }));
+    scope.set(name, { id: name, dtype: initial.dtype, mutable: true, declaredLoopDepth: context.loopDepth });
   });
 }
+
+const compoundAssignmentOperators: ReadonlyMap<string, GpuBinaryOperator> = new Map([
+  ["KindPlusEqualsToken", "add"],
+  ["KindMinusEqualsToken", "sub"],
+  ["KindAsteriskEqualsToken", "mul"],
+  ["KindSlashEqualsToken", "div"],
+]);
 
 function buildExpressionStatement(
   context: ExtractionContext,
@@ -452,19 +493,36 @@ function buildExpressionStatement(
   }
   if (ast.kindName(expression) === KindBinaryExpression) {
     const operatorToken = BinaryExpression_OperatorToken(expression);
-    if (operatorToken !== undefined && ast.kindName(operatorToken) === "KindEqualsToken") {
-      buildStore(context, expression, scope, operations);
+    const operatorKind = operatorToken === undefined ? "" : ast.kindName(operatorToken);
+    if (operatorKind === "KindEqualsToken") {
+      buildAssignmentStatement(context, expression, undefined, scope, operations);
+      return;
+    }
+    const compoundOperator = compoundAssignmentOperators.get(operatorKind);
+    if (compoundOperator !== undefined) {
+      buildAssignmentStatement(context, expression, compoundOperator, scope, operations);
       return;
     }
   }
   if (ast.kindName(expression) === KindCallExpression) {
+    const accessFact = context.input.facts.getFact(expression, gpuTensorAccessCallFactKey);
+    if (accessFact?.access === "store") {
+      buildTensorStoreCall(context, expression, scope, operations);
+      return;
+    }
     buildExpression(context, expression, scope, operations);
     return;
   }
-  reject(context, statement, "gpu.kernel.statement", "Only tensor element stores and intrinsic calls can stand alone in device code.");
+  reject(context, statement, "gpu.kernel.statement", "Only tensor element stores, local assignments, and intrinsic calls can stand alone in device code.");
 }
 
-function buildStore(context: ExtractionContext, assignment: Node, scope: Scope, operations: GpuIrOperation[]): void {
+function buildAssignmentStatement(
+  context: ExtractionContext,
+  assignment: Node,
+  compoundOperator: GpuBinaryOperator | undefined,
+  scope: Scope,
+  operations: GpuIrOperation[],
+): void {
   const { ast } = context;
   const target = BinaryExpression_Left(assignment);
   const valueExpression = BinaryExpression_Right(assignment);
@@ -472,13 +530,16 @@ function buildStore(context: ExtractionContext, assignment: Node, scope: Scope, 
     reject(context, assignment, "gpu.kernel.assignment", "This assignment form is not supported in device code.");
     return;
   }
+  if (ast.kindName(target) === KindIdentifier) {
+    buildLocalAssignment(context, assignment, target, compoundOperator, valueExpression, scope, operations);
+    return;
+  }
   if (ast.kindName(target) !== KindElementAccessExpression) {
-    reject(
-      context,
-      target,
-      "gpu.kernel.mutable-local",
-      "Only tensor elements can be assigned in device code; local bindings are immutable.",
-    );
+    reject(context, target, "gpu.kernel.assignment", "Only tensor elements and mutable let bindings can be assigned in device code.");
+    return;
+  }
+  if (compoundOperator !== undefined) {
+    reject(context, assignment, "gpu.kernel.assignment", "Compound assignment to tensor elements is not supported in device code.");
     return;
   }
   const access = resolveTensorElementAccess(context, target, scope, operations);
@@ -508,6 +569,91 @@ function buildStore(context: ExtractionContext, assignment: Node, scope: Scope, 
   );
 }
 
+// Mutable let locals are loop-carried accumulators: assignments are legal
+// only inside a counted loop nested deeper than the declaration, with a
+// matching dtype. Everything else fails closed.
+function buildLocalAssignment(
+  context: ExtractionContext,
+  assignment: Node,
+  targetIdentifier: Node,
+  compoundOperator: GpuBinaryOperator | undefined,
+  valueExpression: Node,
+  scope: Scope,
+  operations: GpuIrOperation[],
+): void {
+  const { ast } = context;
+  const name = ast.text(targetIdentifier);
+  const binding = scope.get(name);
+  if (binding === undefined) {
+    if (context.tensors.has(name)) {
+      reject(context, targetIdentifier, "gpu.kernel.tensor-value", `Tensor parameter '${name}' cannot be reassigned in device code.`);
+      return;
+    }
+    reject(
+      context,
+      targetIdentifier,
+      "gpu.kernel.host-capture",
+      `'${name}' is not defined inside the kernel; device code cannot capture host values.`,
+    );
+    return;
+  }
+  if (!binding.mutable) {
+    reject(
+      context,
+      assignment,
+      "gpu.kernel.mutable-local",
+      `'${name}' is not a mutable let binding; only let bindings can be reassigned in device code.`,
+    );
+    return;
+  }
+  if (context.loopDepth <= binding.declaredLoopDepth) {
+    reject(
+      context,
+      assignment,
+      "gpu.kernel.mutable-local",
+      `Mutable local '${name}' is a loop-carried accumulator; assign it only inside a counted loop nested below its declaration.`,
+    );
+    return;
+  }
+  let value = buildExpression(context, valueExpression, scope, operations);
+  if (value === undefined) {
+    return;
+  }
+  if (compoundOperator !== undefined) {
+    if (value.dtype !== binding.dtype) {
+      reject(
+        context,
+        assignment,
+        "gpu.kernel.mixed-dtype",
+        `Compound assignment to '${name}' needs matching operand dtypes; found '${binding.dtype}' and '${value.dtype}'.`,
+      );
+      return;
+    }
+    const id = nextTemp(context);
+    operations.push(
+      withSpan(context, assignment, {
+        kind: "binary",
+        result: id,
+        operator: compoundOperator,
+        left: binding.id,
+        right: value.id,
+        dtype: binding.dtype,
+      }),
+    );
+    value = { id, dtype: binding.dtype };
+  }
+  if (value.dtype !== binding.dtype) {
+    reject(
+      context,
+      assignment,
+      "gpu.kernel.mixed-dtype",
+      `Device code assigns '${value.dtype}' to mutable local '${name}' declared as '${binding.dtype}'.`,
+    );
+    return;
+  }
+  operations.push(withSpan(context, assignment, { kind: "assign", target: name, value: value.id }));
+}
+
 interface TensorElementAccess {
   readonly tensor: TensorEntry;
   readonly index: ScalarValue;
@@ -530,18 +676,30 @@ function resolveTensorElementAccess(
     reject(context, target, "gpu.kernel.indexing", `'${ast.text(target)}' is not a tensor parameter of this kernel.`);
     return undefined;
   }
+  const indexExpression = ElementAccessExpression_ArgumentExpression(access);
+  if (indexExpression === undefined) {
+    reject(context, access, "gpu.kernel.indexing", "Tensor element access needs an index expression.");
+    return undefined;
+  }
+  if (ast.kindName(indexExpression) === KindBinaryExpression) {
+    const operatorToken = BinaryExpression_OperatorToken(indexExpression);
+    if (operatorToken !== undefined && ast.kindName(operatorToken) === "KindCommaToken") {
+      reject(
+        context,
+        access,
+        "gpu.kernel.indexing",
+        `'${tensor.name}[i, j]' is TypeScript's comma operator, not tensor indexing; use '${tensor.name}.at(i, j)' and '${tensor.name}.set(i, j, value)'.`,
+      );
+      return undefined;
+    }
+  }
   if (tensor.fact.rank !== 1) {
     reject(
       context,
       access,
       "gpu.kernel.index-arity",
-      `Tensor parameter '${tensor.name}' has rank ${tensor.fact.rank}; single-index element access needs rank 1.`,
+      `Tensor parameter '${tensor.name}' has rank ${tensor.fact.rank}; bracket element access needs rank 1. Use '${tensor.name}.at(...)' for higher ranks.`,
     );
-    return undefined;
-  }
-  const indexExpression = ElementAccessExpression_ArgumentExpression(access);
-  if (indexExpression === undefined) {
-    reject(context, access, "gpu.kernel.indexing", "Tensor element access needs an index expression.");
     return undefined;
   }
   const index = buildExpression(context, indexExpression, scope, operations);
@@ -679,9 +837,11 @@ function buildForStatement(context: ExtractionContext, statement: Node, scope: S
     return;
   }
   const bodyScope = new Map(scope);
-  bodyScope.set(counterName, { id: counterName, dtype: "int32" });
+  bodyScope.set(counterName, { id: counterName, dtype: "int32", mutable: false, declaredLoopDepth: context.loopDepth });
   const bodyOperations: GpuIrOperation[] = [];
+  context.loopDepth += 1;
   buildBlockOrStatement(context, bodyStatement, bodyScope, bodyOperations);
+  context.loopDepth -= 1;
   operations.push(
     withSpan(context, statement, {
       kind: "loop",
@@ -905,6 +1065,90 @@ function buildPrefixUnaryExpression(
   return reject(context, expression, "gpu.kernel.operator", "This unary operator is not supported in device code.");
 }
 
+// Resolves a t.at(...) / t.set(...) callee to the tensor parameter it
+// accesses, evaluating the index arguments against the tensor's rank.
+function resolveTensorAccessCall(
+  context: ExtractionContext,
+  expression: Node,
+  indexArguments: readonly Node[],
+  scope: Scope,
+  operations: GpuIrOperation[],
+): { readonly tensor: TensorEntry; readonly indices: readonly string[] } | undefined {
+  const { ast } = context;
+  const callee = Node_Expression(expression);
+  if (callee === undefined || ast.kindName(callee) !== KindPropertyAccessExpression) {
+    reject(context, expression, "gpu.kernel.indexing", "Tensor element access calls must be direct member calls on a tensor parameter.");
+    return undefined;
+  }
+  const target = Node_Expression(callee);
+  if (target === undefined || ast.kindName(target) !== KindIdentifier) {
+    reject(context, expression, "gpu.kernel.indexing", "Device code can only access elements of tensor parameters directly.");
+    return undefined;
+  }
+  const tensor = context.tensors.get(ast.text(target));
+  if (tensor === undefined) {
+    reject(context, target, "gpu.kernel.indexing", `'${ast.text(target)}' is not a tensor parameter of this kernel.`);
+    return undefined;
+  }
+  if (indexArguments.length !== tensor.fact.rank) {
+    reject(
+      context,
+      expression,
+      "gpu.kernel.index-arity",
+      `Tensor parameter '${tensor.name}' has rank ${tensor.fact.rank}; element access needs ${tensor.fact.rank} indices, found ${indexArguments.length}.`,
+    );
+    return undefined;
+  }
+  const indices: string[] = [];
+  for (const indexArgument of indexArguments) {
+    const index = buildExpression(context, indexArgument, scope, operations);
+    if (index === undefined) {
+      return undefined;
+    }
+    if (index.dtype !== "int32") {
+      reject(context, indexArgument, "gpu.kernel.index-dtype", `Tensor indices must be int32 values; found '${index.dtype}'.`);
+      return undefined;
+    }
+    indices.push(index.id);
+  }
+  return { tensor, indices };
+}
+
+function buildTensorStoreCall(context: ExtractionContext, expression: Node, scope: Scope, operations: GpuIrOperation[]): void {
+  const { ast } = context;
+  const callArguments = ast.arguments(expression).filter((argument): argument is Node => argument !== undefined);
+  if (callArguments.length === 0) {
+    reject(context, expression, "gpu.kernel.index-arity", "Tensor element stores need index arguments and a value argument.");
+    return;
+  }
+  const valueExpression = callArguments[callArguments.length - 1];
+  const access = resolveTensorAccessCall(context, expression, callArguments.slice(0, -1), scope, operations);
+  if (access === undefined || valueExpression === undefined) {
+    return;
+  }
+  const value = buildExpression(context, valueExpression, scope, operations);
+  if (value === undefined) {
+    return;
+  }
+  if (value.dtype !== access.tensor.fact.elementType) {
+    reject(
+      context,
+      expression,
+      "gpu.kernel.store-dtype",
+      `Device code stores '${value.dtype}' into tensor '${access.tensor.name}' whose element dtype is '${access.tensor.fact.elementType}'.`,
+    );
+    return;
+  }
+  operations.push(
+    withSpan(context, expression, {
+      kind: "store",
+      tensor: access.tensor.name,
+      indices: access.indices,
+      value: value.id,
+    }),
+  );
+}
+
 function buildCallExpression(
   context: ExtractionContext,
   expression: Node,
@@ -913,6 +1157,33 @@ function buildCallExpression(
   preferredName?: string,
 ): ScalarValue | undefined {
   const { ast } = context;
+  const accessFact = context.input.facts.getFact(expression, gpuTensorAccessCallFactKey);
+  if (accessFact !== undefined) {
+    if (accessFact.access === "store") {
+      return reject(
+        context,
+        expression,
+        "gpu.kernel.statement",
+        "Tensor element stores are statements; set(...) produces no value.",
+      );
+    }
+    const callArguments = ast.arguments(expression).filter((argument): argument is Node => argument !== undefined);
+    const access = resolveTensorAccessCall(context, expression, callArguments, scope, operations);
+    if (access === undefined) {
+      return undefined;
+    }
+    const id = preferredName ?? nextTemp(context);
+    operations.push(
+      withSpan(context, expression, {
+        kind: "load",
+        result: id,
+        tensor: access.tensor.name,
+        indices: access.indices,
+        dtype: access.tensor.fact.elementType,
+      }),
+    );
+    return { id, dtype: access.tensor.fact.elementType };
+  }
   const intrinsicFact = context.input.facts.getFact(expression, gpuIntrinsicCallFactKey);
   if (intrinsicFact === undefined) {
     return reject(
@@ -921,6 +1192,12 @@ function buildCallExpression(
       "gpu.device.host-call",
       "Device code cannot call host values; only GPU intrinsics are callable inside kernels.",
     );
+  }
+  if (intrinsicFact.intrinsic.kind === "shape-dim") {
+    return buildShapeDimIntrinsic(context, expression);
+  }
+  if (intrinsicFact.intrinsic.kind === "meta-parameter") {
+    return buildMetaParameterIntrinsic(context, expression);
   }
   const callArguments = ast.arguments(expression).filter((argument): argument is Node => argument !== undefined);
   if (intrinsicFact.intrinsic.kind === "thread-index") {
@@ -1018,6 +1295,59 @@ function buildCallExpression(
     }),
   );
   return { id, dtype: intrinsicFact.intrinsic.dtype };
+}
+
+// Shape dimensions and launch meta parameters are implicitly defined IR
+// values: tensor shape symbols and launch.metaParameters enter the defined
+// value set during IR validation, so no operation is emitted here.
+function buildShapeDimIntrinsic(context: ExtractionContext, expression: Node): ScalarValue | undefined {
+  const { ast } = context;
+  const callArguments = ast.arguments(expression).filter((argument): argument is Node => argument !== undefined);
+  const [tensorArgument, dimensionArgument] = callArguments;
+  if (callArguments.length !== 2 || tensorArgument === undefined || ast.kindName(tensorArgument) !== KindIdentifier) {
+    return reject(context, expression, "gpu.kernel.shape-dim", "gpu.dim takes a tensor parameter and a literal dimension.");
+  }
+  const tensor = context.tensors.get(ast.text(tensorArgument));
+  if (tensor === undefined) {
+    return reject(context, tensorArgument, "gpu.kernel.shape-dim", `'${ast.text(tensorArgument)}' is not a tensor parameter of this kernel.`);
+  }
+  const dimensionText = dimensionArgument === undefined ? "" : ast.text(dimensionArgument);
+  const dimension = Number(dimensionText);
+  if (
+    dimensionArgument === undefined ||
+    ast.kindName(dimensionArgument) !== KindNumericLiteral ||
+    !Number.isInteger(dimension) ||
+    dimension < 0 ||
+    dimension >= tensor.fact.rank
+  ) {
+    return reject(
+      context,
+      expression,
+      "gpu.kernel.shape-dim",
+      `gpu.dim needs a literal dimension between 0 and ${tensor.fact.rank - 1} for tensor parameter '${tensor.name}'.`,
+    );
+  }
+  const symbols = tensorShapeSymbols(tensor);
+  const symbol = symbols[dimension];
+  if (symbol === undefined) {
+    return reject(context, expression, "gpu.kernel.shape-dim", `Tensor parameter '${tensor.name}' has no dimension ${dimension}.`);
+  }
+  return { id: symbol, dtype: "int32" };
+}
+
+function buildMetaParameterIntrinsic(context: ExtractionContext, expression: Node): ScalarValue | undefined {
+  const { ast } = context;
+  const callArguments = ast.arguments(expression).filter((argument): argument is Node => argument !== undefined);
+  const [nameArgument] = callArguments;
+  if (callArguments.length !== 1 || nameArgument === undefined || ast.kindName(nameArgument) !== KindStringLiteral) {
+    return reject(context, expression, "gpu.kernel.meta-parameter", "gpu.meta takes a single string literal meta parameter name.");
+  }
+  const name = ast.text(nameArgument);
+  if (name.length === 0) {
+    return reject(context, expression, "gpu.kernel.meta-parameter", "gpu.meta needs a non-empty meta parameter name.");
+  }
+  context.metaParameters.add(name);
+  return { id: name, dtype: "int32" };
 }
 
 export { gpuKernelDeclarationFactKey };

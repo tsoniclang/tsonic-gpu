@@ -3,7 +3,7 @@
 // inventory audit proves no reject capability exists without a lane here.
 
 const header = `import { kernel, gpu } from "@tsonic/gpu/lang.js";
-import type { Float32Tensor, Int32Tensor, Float32Matrix, Float32HostTensor } from "@acme/tensor";
+import type { Float32Tensor, Int32Tensor, Float32Matrix, Float32HostTensor, Matrix } from "@acme/tensor";
 import type { int32 } from "@tsonic/core/types.js";
 `;
 
@@ -248,6 +248,55 @@ export const k = kernel(function k(a: Float32Tensor, out: Float32Tensor) {
     `export const k = kernel(function k(out: Float32Tensor) {
   const i = gpu.globalId(0);
   out[i] = i;
+});
+`,
+  ),
+  lane(
+    // TypeScript already rejects side-effect-free comma operands (TS2695);
+    // this proves the GPU lane for the comma forms TypeScript accepts.
+    "comma-operator bracket indexing",
+    "gpu.kernel.indexing",
+    `export const k = kernel(function k(m: Float32Matrix, out: Float32Tensor) {
+  const i = gpu.globalId(0);
+  out[i] = m[gpu.globalId(0), i];
+});
+`,
+  ),
+  lane(
+    "assignment to a loop counter",
+    "gpu.kernel.mutable-local",
+    `export const k = kernel(function k(a: Float32Tensor, out: Float32Tensor, n: int32) {
+  for (let k2 = 0; k2 < n; k2++) {
+    k2 = 0;
+    out[k2] = a[k2];
+  }
+});
+`,
+  ),
+  lane(
+    "compound assignment to a tensor element",
+    "gpu.kernel.assignment",
+    `export const k = kernel(function k(out: Float32Tensor) {
+  const i = gpu.globalId(0);
+  out[i] += 1.0;
+});
+`,
+  ),
+  lane(
+    "shape dimension out of range",
+    "gpu.kernel.shape-dim",
+    `export const k = kernel(function k(a: Float32Tensor, out: Float32Tensor) {
+  const d = gpu.dim(a, 3);
+  out[d] = 1.0;
+});
+`,
+  ),
+  lane(
+    "non-literal meta parameter name",
+    "gpu.kernel.meta-parameter",
+    `export const k = kernel(function k(a: Float32Tensor, out: Float32Tensor) {
+  const block = gpu.meta("A" + "B");
+  out[block] = a[block];
 });
 `,
   ),

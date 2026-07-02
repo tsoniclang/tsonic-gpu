@@ -44,7 +44,9 @@ export {
   gpuControlLoopCapability,
   gpuDeviceCapability,
   gpuDtypeCapability,
+  gpuLaunchMetaCapability,
   gpuLayoutCapability,
+  gpuMutableLocalCapability,
   gpuMathIntrinsicCapability,
   gpuMemoryLoadCapability,
   gpuMemoryMaskedCapability,
@@ -100,11 +102,13 @@ export {
   gpuIntrinsicCallFactKey,
   gpuKernelDeclarationFactKey,
   gpuScalarParameterFactKey,
+  gpuTensorAccessCallFactKey,
   gpuTensorParameterFactKey,
   type GpuIntrinsicCallFact,
   type GpuIntrinsicDescriptor,
   type GpuKernelDeclarationFact,
   type GpuScalarParameterFact,
+  type GpuTensorAccessCallFact,
   type GpuTensorParameterFact,
 } from "./source/gpu-facts/keys.js";
 export {

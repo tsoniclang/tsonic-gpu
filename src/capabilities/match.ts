@@ -10,11 +10,13 @@ import {
   gpuControlLoopCapability,
   gpuDeviceCapability,
   gpuDtypeCapability,
+  gpuLaunchMetaCapability,
   gpuLayoutCapability,
   gpuMathIntrinsicCapability,
   gpuMemoryLoadCapability,
   gpuMemoryMaskedCapability,
   gpuMemoryStoreCapability,
+  gpuMutableLocalCapability,
   gpuReduceCapability,
   gpuShapeSymbolicCapability,
   gpuThreadIndexCapability,
@@ -36,6 +38,9 @@ export function requiredCapabilitiesForKernel(kernel: GpuIrFunction): readonly s
       required.add(gpuDtypeCapability(parameter.scalarType));
     }
   }
+  if ((kernel.launch.metaParameters ?? []).length > 0) {
+    required.add(gpuLaunchMetaCapability);
+  }
   collectBlockCapabilities(kernel.body, required);
   return [...required].sort();
 }
@@ -45,6 +50,13 @@ function collectBlockCapabilities(block: GpuIrBlock, required: Set<string>): voi
     switch (operation.kind) {
       case "const":
         required.add(gpuDtypeCapability(operation.dtype));
+        break;
+      case "local":
+        required.add(gpuMutableLocalCapability);
+        required.add(gpuDtypeCapability(operation.dtype));
+        break;
+      case "assign":
+        required.add(gpuMutableLocalCapability);
         break;
       case "thread-index":
         required.add(gpuThreadIndexCapability(operation.space));

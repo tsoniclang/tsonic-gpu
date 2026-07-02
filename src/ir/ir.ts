@@ -87,6 +87,20 @@ export type GpuIrOperation =
       readonly value: number | boolean;
     })
   | (GpuIrOperationBase & {
+      // A mutable scalar cell. Reads use the result name; writes are `assign`
+      // operations, legal only inside a loop nested deeper than this
+      // declaration (loop-carried accumulators).
+      readonly kind: "local";
+      readonly result: string;
+      readonly initial: string;
+      readonly dtype: GpuScalarType;
+    })
+  | (GpuIrOperationBase & {
+      readonly kind: "assign";
+      readonly target: string;
+      readonly value: string;
+    })
+  | (GpuIrOperationBase & {
       readonly kind: "thread-index";
       readonly result: string;
       readonly space: GpuThreadIndexSpace;

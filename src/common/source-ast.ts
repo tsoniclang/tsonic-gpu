@@ -19,6 +19,7 @@ export const KindPostfixUnaryExpression = "KindPostfixUnaryExpression";
 export const KindPrefixUnaryExpression = "KindPrefixUnaryExpression";
 export const KindPropertyAccessExpression = "KindPropertyAccessExpression";
 export const KindReturnStatement = "KindReturnStatement";
+export const KindStringLiteral = "KindStringLiteral";
 export const KindTrueKeyword = "KindTrueKeyword";
 export const KindTypeReference = "KindTypeReference";
 export const KindVariableDeclaration = "KindVariableDeclaration";

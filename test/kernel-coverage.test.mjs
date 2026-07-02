@@ -65,6 +65,58 @@ function reducingBackend() {
   };
 }
 
+const matmulSource = `import { kernel, gpu } from "@tsonic/gpu/lang.js";
+import type { Matrix } from "@acme/tensor";
+
+export const matmul = kernel(function matmul<M extends number, K extends number, N extends number>(
+  a: Matrix<M, K>,
+  b: Matrix<K, N>,
+  c: Matrix<M, N>,
+) {
+  const row = gpu.globalId(0);
+  const col = gpu.globalId(1);
+  let acc = 0.0;
+  const kDim = gpu.dim(a, 1);
+  for (let k = 0; k < kDim; k++) {
+    acc += a.at(row, k) * b.at(k, col);
+  }
+  c.set(row, col, acc);
+});
+`;
+
+test("matmul with shared shape symbols compiles through the fake backend", () => {
+  const { result } = compileGpu({ files: { "index.ts": matmulSource } });
+  assert.deepEqual(result.diagnostics, []);
+  const record = JSON.parse(artifactText(result, "kernels/matmul.gpu-fake.json"));
+  assert.equal(record.kernel, "matmul");
+  assert.deepEqual(
+    record.parameters.map((parameter) => [parameter.name, parameter.role, parameter.rank]),
+    [
+      ["a", "input", 2],
+      ["b", "input", 2],
+      ["c", "output", 2],
+    ],
+  );
+  assert.equal(record.launch.gridDimensions, 2);
+});
+
+test("launch meta parameters flow into launch wrappers", () => {
+  const source = `import { kernel, gpu } from "@tsonic/gpu/lang.js";
+import type { Float32Tensor } from "@acme/tensor";
+
+export const tiled = kernel(function tiled(a: Float32Tensor, out: Float32Tensor) {
+  const block = gpu.meta("BLOCK");
+  out[block] = a[block];
+});
+`;
+  const { result } = compileGpu({ files: { "index.ts": source } });
+  assert.deepEqual(result.diagnostics, []);
+  const record = JSON.parse(artifactText(result, "kernels/tiled.gpu-fake.json"));
+  assert.deepEqual(record.launch.metaParameters, ["BLOCK"]);
+  const launchPlan = JSON.parse(artifactText(result, "gpu/launch-plan.json"));
+  assert.deepEqual(launchPlan.launchWrappers, [{ hostFunctionName: "tiled", kernelName: "tiled", metaParameters: ["BLOCK"] }]);
+});
+
 test("the gelu approximation example compiles through the fake backend", () => {
   const { result } = compileGpu({ files: { "index.ts": geluSource } });
   assert.deepEqual(result.diagnostics, []);

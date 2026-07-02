@@ -26,6 +26,8 @@ const capabilityCatalog = Object.freeze({
   "gpu.barrier.block": "negotiation-capability",
   "gpu.control.if": "negotiation-capability",
   "gpu.control.loop": "negotiation-capability",
+  "gpu.launch.meta": "negotiation-capability",
+  "gpu.local.mutable": "negotiation-capability",
   "gpu.memory.load": "negotiation-capability",
   "gpu.memory.masked": "negotiation-capability",
   "gpu.memory.store": "negotiation-capability",
@@ -48,8 +50,10 @@ const capabilityCatalog = Object.freeze({
   "gpu.kernel.no-output": "legality-reject",
   "gpu.kernel.operator": "legality-reject",
   "gpu.kernel.parameter-type": "legality-reject",
+  "gpu.kernel.meta-parameter": "legality-reject",
   "gpu.kernel.reduce-operand": "legality-reject",
   "gpu.kernel.return-value": "legality-reject",
+  "gpu.kernel.shape-dim": "legality-reject",
   "gpu.kernel.statement": "legality-reject",
   "gpu.kernel.store-dtype": "legality-reject",
   "gpu.kernel.tensor-value": "legality-reject",
@@ -62,6 +66,7 @@ const capabilityCatalog = Object.freeze({
   "gpu.kernel.parameter-name": "defense-in-depth",
   // Structural GPU IR invariants validated before capability matching.
   "gpu.ir.aliasing": "ir-invariant",
+  "gpu.ir.assign": "ir-invariant",
   "gpu.ir.effect": "ir-invariant",
   "gpu.ir.index-arity": "ir-invariant",
   "gpu.ir.kernel-name": "ir-invariant",
@@ -86,6 +91,9 @@ const capabilityCatalog = Object.freeze({
   "gpu.ir.value-ref": "ir-invariant",
   // Host boundary contract.
   "gpu.host.integration": "host-boundary",
+  // Intrinsic spellings quoted in user-facing diagnostic messages.
+  "gpu.dim": "intrinsic-spelling",
+  "gpu.meta": "intrinsic-spelling",
   // Diagnostic evidence keys, not capabilities.
   "gpu.backend": "evidence-key",
   "gpu.host": "evidence-key",

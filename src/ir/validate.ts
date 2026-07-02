@@ -94,7 +94,7 @@ function validateKernel(kernel: GpuIrFunction, report: ReportFn): void {
   }
   validateLaunchPlan(kernel, definedValues, metaParameterNames, kernelReport);
   validateEffects(kernel, tensorParameters, parameterNames, kernelReport);
-  validateBlock(kernel.body, definedValues, tensorParameters, kernelReport);
+  validateBlock(kernel.body, definedValues, tensorParameters, kernelReport, new Map(), 0);
 }
 
 function validateTensorParameter(
@@ -251,8 +251,11 @@ function validateBlock(
   outerDefined: ReadonlySet<string>,
   tensorParameters: ReadonlyMap<string, Extract<GpuKernelParameter, { kind: "tensor" }>>,
   report: ReportFn,
+  outerMutables: ReadonlyMap<string, number>,
+  loopDepth: number,
 ): void {
   const defined = new Set(outerDefined);
+  const mutables = new Map(outerMutables);
 
   const requireValue = (name: string, description: string, span?: GpuSourceSpan): void => {
     if (!defined.has(name)) {
@@ -371,11 +374,42 @@ function validateBlock(
         }
         break;
       }
+      case "local": {
+        if (!isGpuScalarType(operation.dtype)) {
+          report("GPU_INVALID_IR", "gpu.ir.scalar.dtype", `GPU IR local has unknown dtype '${String(operation.dtype)}'.`, undefined, operation.span);
+        }
+        requireValue(operation.initial, `the initial value of local '${operation.result}'`, operation.span);
+        defineResult(operation.result, operation.span);
+        mutables.set(operation.result, loopDepth);
+        break;
+      }
+      case "assign": {
+        const declarationDepth = mutables.get(operation.target);
+        if (declarationDepth === undefined) {
+          report(
+            "GPU_INVALID_IR",
+            "gpu.ir.assign",
+            `GPU IR assigns to '${operation.target}', which is not a mutable local.`,
+            undefined,
+            operation.span,
+          );
+        } else if (loopDepth <= declarationDepth) {
+          report(
+            "GPU_INVALID_IR",
+            "gpu.ir.assign",
+            `GPU IR assigns to local '${operation.target}' outside a loop nested deeper than its declaration; mutable locals are loop-carried accumulators.`,
+            undefined,
+            operation.span,
+          );
+        }
+        requireValue(operation.value, `the value assigned to '${operation.target}'`, operation.span);
+        break;
+      }
       case "if": {
         requireValue(operation.condition, "a conditional guard", operation.span);
-        validateBlock(operation.then, defined, tensorParameters, report);
+        validateBlock(operation.then, defined, tensorParameters, report, mutables, loopDepth);
         if (operation.else !== undefined) {
-          validateBlock(operation.else, defined, tensorParameters, report);
+          validateBlock(operation.else, defined, tensorParameters, report, mutables, loopDepth);
         }
         break;
       }
@@ -387,12 +421,12 @@ function validateBlock(
         }
         if (defined.has(operation.counter) || tensorParameters.has(operation.counter)) {
           report("GPU_INVALID_IR", "gpu.ir.value-def", `GPU IR loop counter '${operation.counter}' shadows an existing value.`, undefined, operation.span);
-          validateBlock(operation.body, defined, tensorParameters, report);
+          validateBlock(operation.body, defined, tensorParameters, report, mutables, loopDepth + 1);
           break;
         }
         const bodyScope = new Set(defined);
         bodyScope.add(operation.counter);
-        validateBlock(operation.body, bodyScope, tensorParameters, report);
+        validateBlock(operation.body, bodyScope, tensorParameters, report, mutables, loopDepth + 1);
         break;
       }
       case "reduce": {

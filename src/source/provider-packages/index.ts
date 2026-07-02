@@ -27,6 +27,14 @@ export interface GpuTensorTypeRow {
   readonly elementType: GpuScalarType;
   readonly rank: number;
   readonly device: GpuDeviceDomain;
+  // Type-argument positions whose named type parameters become dimension
+  // symbols; sharing a type parameter across parameters shares the symbol.
+  // The list length must equal the rank.
+  readonly shapeSymbolArguments?: readonly number[];
+  // Provider member ids for element access: loadMember reads one element
+  // (t.at(...indices)), storeMember writes one (t.set(...indices, value)).
+  readonly loadMember?: string;
+  readonly storeMember?: string;
 }
 
 export interface GpuProviderPackageDefinition {

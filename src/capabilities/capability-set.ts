@@ -56,6 +56,8 @@ export const gpuMemoryStoreCapability = "gpu.memory.store";
 export const gpuMemoryMaskedCapability = "gpu.memory.masked";
 export const gpuControlIfCapability = "gpu.control.if";
 export const gpuControlLoopCapability = "gpu.control.loop";
+export const gpuMutableLocalCapability = "gpu.local.mutable";
+export const gpuLaunchMetaCapability = "gpu.launch.meta";
 export const gpuBarrierBlockCapability = "gpu.barrier.block";
 export const gpuShapeSymbolicCapability = "gpu.shape.symbolic";
 

@@ -1,0 +1,169 @@
+{
+  "name": "gpu_kernels",
+  "kernels": [
+    {
+      "name": "add",
+      "parameters": [
+        {
+          "kind": "tensor",
+          "name": "a",
+          "role": "input",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 1,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "a_dim0"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "readonly",
+            "aliasing": "noalias"
+          }
+        },
+        {
+          "kind": "tensor",
+          "name": "b",
+          "role": "input",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 1,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "b_dim0"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "readonly",
+            "aliasing": "noalias"
+          }
+        },
+        {
+          "kind": "tensor",
+          "name": "out",
+          "role": "output",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 1,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "out_dim0"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "mutable",
+            "aliasing": "noalias"
+          }
+        },
+        {
+          "kind": "scalar",
+          "name": "n",
+          "role": "scalar",
+          "scalarType": "int32"
+        }
+      ],
+      "launch": {
+        "grid": [
+          {
+            "kind": "symbol",
+            "name": "out_dim0"
+          }
+        ],
+        "streamPolicy": "default",
+        "devicePolicy": "single-device"
+      },
+      "effects": [
+        {
+          "kind": "read",
+          "parameter": "a"
+        },
+        {
+          "kind": "read",
+          "parameter": "b"
+        },
+        {
+          "kind": "write",
+          "parameter": "out"
+        }
+      ],
+      "body": {
+        "operations": [
+          {
+            "kind": "thread-index",
+            "result": "i",
+            "space": "global",
+            "dimension": 0
+          },
+          {
+            "kind": "binary",
+            "result": "%1",
+            "operator": "lt",
+            "left": "i",
+            "right": "n",
+            "dtype": "int32"
+          },
+          {
+            "kind": "if",
+            "condition": "%1",
+            "then": {
+              "operations": [
+                {
+                  "kind": "load",
+                  "result": "%2",
+                  "tensor": "a",
+                  "indices": [
+                    "i"
+                  ],
+                  "dtype": "float32"
+                },
+                {
+                  "kind": "load",
+                  "result": "%3",
+                  "tensor": "b",
+                  "indices": [
+                    "i"
+                  ],
+                  "dtype": "float32"
+                },
+                {
+                  "kind": "binary",
+                  "result": "%4",
+                  "operator": "add",
+                  "left": "%2",
+                  "right": "%3",
+                  "dtype": "float32"
+                },
+                {
+                  "kind": "store",
+                  "tensor": "out",
+                  "indices": [
+                    "i"
+                  ],
+                  "value": "%4"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

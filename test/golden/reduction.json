@@ -1,0 +1,130 @@
+{
+  "name": "gpu_kernels",
+  "kernels": [
+    {
+      "name": "total",
+      "parameters": [
+        {
+          "kind": "tensor",
+          "name": "values",
+          "role": "input",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 1,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "values_dim0"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "readonly",
+            "aliasing": "noalias"
+          }
+        },
+        {
+          "kind": "tensor",
+          "name": "out",
+          "role": "output",
+          "tensor": {
+            "elementType": "float32",
+            "rank": 1,
+            "shape": [
+              {
+                "kind": "symbol",
+                "name": "out_dim0"
+              }
+            ],
+            "layout": {
+              "kind": "contiguous"
+            },
+            "device": {
+              "domain": "cuda"
+            },
+            "mutability": "mutable",
+            "aliasing": "noalias"
+          }
+        }
+      ],
+      "launch": {
+        "grid": [
+          {
+            "kind": "symbol",
+            "name": "out_dim0"
+          }
+        ],
+        "streamPolicy": "default",
+        "devicePolicy": "single-device"
+      },
+      "effects": [
+        {
+          "kind": "read",
+          "parameter": "values"
+        },
+        {
+          "kind": "write",
+          "parameter": "out"
+        }
+      ],
+      "body": {
+        "operations": [
+          {
+            "kind": "reduce",
+            "result": "partial",
+            "operator": "sum",
+            "operand": "values",
+            "scope": "block",
+            "dtype": "float32"
+          },
+          {
+            "kind": "thread-index",
+            "result": "lane",
+            "space": "local",
+            "dimension": 0
+          },
+          {
+            "kind": "const",
+            "result": "%1",
+            "dtype": "int32",
+            "value": 0
+          },
+          {
+            "kind": "binary",
+            "result": "%2",
+            "operator": "eq",
+            "left": "lane",
+            "right": "%1",
+            "dtype": "int32"
+          },
+          {
+            "kind": "if",
+            "condition": "%2",
+            "then": {
+              "operations": [
+                {
+                  "kind": "const",
+                  "result": "%3",
+                  "dtype": "int32",
+                  "value": 0
+                },
+                {
+                  "kind": "store",
+                  "tensor": "out",
+                  "indices": [
+                    "%3"
+                  ],
+                  "value": "partial"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

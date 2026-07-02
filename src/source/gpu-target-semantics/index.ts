@@ -22,6 +22,7 @@ import {
   gpuIntrinsicCallFactKey,
   gpuKernelDeclarationFactKey,
   gpuScalarParameterFactKey,
+  gpuTensorAccessCallFactKey,
   gpuTensorParameterFactKey,
 } from "../gpu-facts/keys.js";
 import { gpuLangIntrinsicRows, gpuLangKernelExportId, type GpuLangIntrinsicRow } from "../gpu-lang/index.js";
@@ -111,7 +112,7 @@ function recordKernelStatementFacts(
       return;
     }
     recordParameterFacts(lifecycle, kernelFunction, tensorRows);
-    recordIntrinsicFacts(lifecycle, kernelFunction, intrinsicRows);
+    recordDeviceCallFacts(lifecycle, kernelFunction, intrinsicRows, tensorRows);
   });
 }
 
@@ -150,10 +151,16 @@ function recordParameterFacts(
           ? undefined
           : tensorRows.find((row) => row.exportId === identity.exportId);
       if (tensorRow !== undefined) {
+        const shape = declaredShapeSymbols(lifecycle, typeNode, tensorRow);
         lifecycle.host.facts.set(
           parameter,
           gpuTensorParameterFactKey,
-          { elementType: tensorRow.elementType, rank: tensorRow.rank, device: tensorRow.device },
+          {
+            elementType: tensorRow.elementType,
+            rank: tensorRow.rank,
+            device: tensorRow.device,
+            ...(shape === undefined ? {} : { shape }),
+          },
           [{ message: "gpu tensor parameter fact from provider tensor row" }],
         );
         continue;
@@ -169,22 +176,68 @@ function recordParameterFacts(
   }
 }
 
-function recordIntrinsicFacts(
+// Dimension symbols come from the tensor type's generic type arguments: each
+// configured argument position must be a plain type reference (typically a
+// type parameter of the kernel function); its name becomes the symbol. When
+// any position does not resolve, no shape is declared and extraction falls
+// back to per-parameter synthesized dimensions.
+function declaredShapeSymbols(
+  lifecycle: ExtensionLifecycleContext,
+  typeNode: Node,
+  tensorRow: GpuTensorTypeRow,
+): readonly string[] | undefined {
+  const positions = tensorRow.shapeSymbolArguments;
+  if (positions === undefined || positions.length !== tensorRow.rank) {
+    return undefined;
+  }
+  const { ast } = lifecycle.compiler;
+  const typeArguments = ast.typeArguments(typeNode);
+  const symbols: string[] = [];
+  for (const position of positions) {
+    const argument = typeArguments[position];
+    if (argument === undefined || ast.kindName(argument) !== KindTypeReference) {
+      return undefined;
+    }
+    const nameNode = TypeReferenceNode_TypeName(argument) ?? argument;
+    const symbol = ast.text(nameNode);
+    if (symbol.length === 0) {
+      return undefined;
+    }
+    symbols.push(symbol);
+  }
+  return symbols;
+}
+
+function recordDeviceCallFacts(
   lifecycle: ExtensionLifecycleContext,
   kernelFunction: Node,
   intrinsicRows: readonly GpuLangIntrinsicRow[],
+  tensorRows: readonly GpuTensorTypeRow[],
 ): void {
   const { ast } = lifecycle.compiler;
   const visit = (node: Node): void => {
     if (ast.kindName(node) === KindCallExpression) {
       const callee = Node_Expression(node);
       const identity = callee === undefined ? undefined : providerIdentityFor(lifecycle, callee);
-      const row =
-        identity?.memberId === undefined ? undefined : intrinsicRows.find((candidate) => candidate.memberId === identity.memberId);
-      if (row !== undefined) {
-        lifecycle.host.facts.set(node, gpuIntrinsicCallFactKey, { intrinsic: row.intrinsic }, [
-          { message: "gpu intrinsic call fact" },
-        ]);
+      if (identity?.memberId !== undefined) {
+        const intrinsicRow = intrinsicRows.find((candidate) => candidate.memberId === identity.memberId);
+        if (intrinsicRow !== undefined) {
+          lifecycle.host.facts.set(node, gpuIntrinsicCallFactKey, { intrinsic: intrinsicRow.intrinsic }, [
+            { message: "gpu intrinsic call fact" },
+          ]);
+        }
+        const loadRow = tensorRows.find((candidate) => candidate.loadMember === identity.memberId);
+        if (loadRow !== undefined) {
+          lifecycle.host.facts.set(node, gpuTensorAccessCallFactKey, { access: "load" }, [
+            { message: "gpu tensor element load fact" },
+          ]);
+        }
+        const storeRow = tensorRows.find((candidate) => candidate.storeMember === identity.memberId);
+        if (storeRow !== undefined) {
+          lifecycle.host.facts.set(node, gpuTensorAccessCallFactKey, { access: "store" }, [
+            { message: "gpu tensor element store fact" },
+          ]);
+        }
       }
     }
     ast.forEachChild(node, (child) => {
