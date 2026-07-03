@@ -19,6 +19,15 @@ and plug in through explicit contracts.
 - The GPU core names no concrete backend, host language, or tensor library in product code.
 - There is no CPU recovery path; a kernel the selected backend cannot lower is a compile error.
 
+## Installed Plugin Shape
+
+The package declares a `tsonic` manifest (`kind: "target"`, `target: "gpu"`) in package.json and
+exports `createTsonicPlugin(composition)`. GPU backends and hosts are themselves plugins: backend
+packages contribute `{ kind: "gpu-backend", backendId, createBackend }` entries and host packages
+contribute `{ kind: "gpu-host", hostTargetId, createHostIntegration }` entries. Composition is
+structural and fail-closed — unknown kinds, id mismatches, and duplicates throw before a target
+pack exists, and selection stays data driven through target options.
+
 ## Layout
 
 - `src/descriptor/` — `createGpuTargetPack()`, the `@tsonic/target-api` target pack entry.

@@ -6,7 +6,7 @@ import type {
   ProviderModuleResolution,
   TargetBindingProvider,
 } from "@tsonic/tsts";
-import type { TargetProviderPackageImplementation } from "@tsonic/target-api";
+import type { TsonicTargetCapabilityPlugin } from "@tsonic/target-api";
 import { gpuTargetId } from "../../descriptor/target-id.js";
 import { isGpuScalarType, type GpuScalarType } from "../../ir/scalar-types.js";
 import { isGpuDeviceDomain, type GpuDeviceDomain } from "../../ir/tensor.js";
@@ -49,7 +49,7 @@ export interface GpuTensorTypeContributor {
   gpuTensorTypes(): readonly GpuTensorTypeRow[];
 }
 
-export type GpuProviderPackageImplementation = TargetProviderPackageImplementation & GpuTensorTypeContributor;
+export type GpuProviderPackageImplementation = TsonicTargetCapabilityPlugin & GpuTensorTypeContributor;
 
 // Definitions are configuration; every inconsistency fails at package
 // creation instead of surfacing as a missing or wrong fact at compile time.
@@ -134,7 +134,9 @@ function validateGpuProviderPackageDefinition(definition: GpuProviderPackageDefi
 export function createGpuProviderPackage(definition: GpuProviderPackageDefinition): GpuProviderPackageImplementation {
   validateGpuProviderPackageDefinition(definition);
   return {
+    kind: "target-capability",
     id: definition.id,
+    targetId: gpuTargetId,
     displayName: definition.displayName,
     moduleOwnership: definition.modules.map((module) => ({ specifierPrefix: module.moduleSpecifier })),
     createExtensions(): readonly CompilerExtension[] {
@@ -150,11 +152,11 @@ export function isGpuTensorTypeContributor(value: object): value is GpuTensorTyp
   return typeof (value as { gpuTensorTypes?: unknown }).gpuTensorTypes === "function";
 }
 
-export function collectGpuTensorTypeRows(selectedPackages: readonly object[]): readonly GpuTensorTypeRow[] {
+export function collectGpuTensorTypeRows(selectedCapabilities: readonly object[]): readonly GpuTensorTypeRow[] {
   const rows: GpuTensorTypeRow[] = [];
-  for (const selectedPackage of selectedPackages) {
-    if (isGpuTensorTypeContributor(selectedPackage)) {
-      rows.push(...selectedPackage.gpuTensorTypes());
+  for (const selectedCapability of selectedCapabilities) {
+    if (isGpuTensorTypeContributor(selectedCapability)) {
+      rows.push(...selectedCapability.gpuTensorTypes());
     }
   }
   return rows;
