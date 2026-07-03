@@ -146,6 +146,25 @@ test("duplicate plugin, backend, and host ids fail closed", () => {
   );
 });
 
+test("backend and host option mismatches fail closed in both directions", () => {
+  const plugin = createTsonicPlugin({
+    plugins: [echoBackendPlugin(), hostPlugin("@fake/other-host", "otherhost")],
+  });
+  const pack = plugin.createTargetPack();
+  // A host target id used as a backend id selects nothing.
+  const swappedBackend = { id: "gpu", options: { backendId: "otherhost", hostTargetId: "otherhost" } };
+  assert.throws(
+    () => pack.createBackend({ project: { entryPoint: "src/index.ts", targets: [swappedBackend] }, target: swappedBackend }),
+    /GPU backend 'otherhost' is not registered/u,
+  );
+  // A backend id used as a host target id selects nothing.
+  const swappedHost = { id: "gpu", options: { backendId: "echo", hostTargetId: "echo" } };
+  const { result } = compileGpu({ files: { "index.ts": scaleSource }, target: swappedHost, pack });
+  assert.deepEqual(result.artifacts, []);
+  assert.equal(result.diagnostics[0].code, "GPU_HOST_INTEGRATION_MISSING");
+  assert.ok(result.diagnostics[0].evidence.includes("gpu.hostTarget=echo"));
+});
+
 test("a composed pack without a selected backend or host still fails closed", () => {
   const plugin = createTsonicPlugin({ plugins: [echoBackendPlugin(), hostPlugin("@fake/other-host", "otherhost")] });
   const pack = plugin.createTargetPack();
