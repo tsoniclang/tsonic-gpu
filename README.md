@@ -21,12 +21,16 @@ and plug in through explicit contracts.
 
 ## Installed Plugin Shape
 
-The package declares a `tsonic` manifest (`kind: "target"`, `target: "gpu"`) in package.json and
-exports `createTsonicPlugin(composition)`. GPU backends and hosts are themselves plugins: backend
-packages contribute `{ kind: "gpu-backend", backendId, createBackend }` entries and host packages
-contribute `{ kind: "gpu-host", hostTargetId, createHostIntegration }` entries. Composition is
-structural and fail-closed — unknown kinds, id mismatches, and duplicates throw before a target
-pack exists, and selection stays data driven through target options.
+The package.json `tsonic` manifest is the core host contract, always
+`{ "kind": "plugin", "contractVersion": 1, "entry": "." }`, and the package exports
+`./package.json` so host discovery resolves it through package exports. `createTsonicPlugin()`
+returns the plugin object carrying `kind: "target"`; plugin kinds live on returned objects,
+never in package.json metadata. GPU backends and hosts are themselves plugins whose returned
+objects carry `{ kind: "gpu-backend", backendId, createBackend }` and
+`{ kind: "gpu-host", hostTargetId, createHostIntegration }`. Composition is structural and
+fail-closed — unknown kinds, id mismatches, and duplicates throw before a target pack exists,
+and selection stays data driven through target options. Routing discovered sub-plugins into
+this target plugin is a tsonic core host requirement (`docs/core-host-requests.md`).
 
 ## Layout
 
