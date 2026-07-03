@@ -37,7 +37,7 @@ export const gpuTargetSemanticsExtensionId = "tsonic.gpu.target-semantics";
 // from source spellings.
 export function createGpuTargetSemanticsExtension(context: TargetProviderContext): CompilerExtension {
   validateGpuTargetOptions(context.target);
-  const tensorRows = collectGpuTensorTypeRows(context.selectedPackages);
+  const tensorRows = collectGpuTensorTypeRows(context.selectedCapabilities);
   const intrinsicRows = gpuLangIntrinsicRows();
   return {
     identity: {

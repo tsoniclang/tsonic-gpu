@@ -15,7 +15,7 @@ function providerContext(pack, target) {
     project: { entryPoint: "src/index.ts", targets: [target] },
     target,
     targetPack: pack,
-    selectedPackages: [],
+    selectedCapabilities: [],
     selectedSurfaces: [],
   };
 }

@@ -1,5 +1,16 @@
 export { createGpuTargetPack, gpuTargetId, type GpuTargetPackConfig } from "./descriptor/gpu-target-pack.js";
 export {
+  createTsonicPlugin,
+  gpuTargetPluginId,
+  readTsonicPluginManifest,
+  resolveGpuPluginComposition,
+  type GpuBackendTsonicPlugin,
+  type GpuHostTsonicPlugin,
+  type GpuPluginComposition,
+  type GpuTsonicPlugin,
+  type TsonicGpuPluginManifest,
+} from "./plugin.js";
+export {
   readGpuBackendId,
   readGpuBackendPackageName,
   readGpuHostTargetId,
