@@ -34,7 +34,8 @@
   "devDependencies": {
     "@tsonic/source-core": "file:../tsonic/packages/source-core",
     "@tsonic/target-api": "file:../tsonic/packages/target-api",
-    "@tsonic/tsts": "file:../tsonic/packages/tsts"
+    "@tsonic/tsts": "file:../tsonic/packages/tsts",
+    "@tsonic/host": "file:../tsonic/packages/host"
   },
   "engines": {
     "node": ">=22.0.0"
