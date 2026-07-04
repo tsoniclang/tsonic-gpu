@@ -74,6 +74,29 @@ export const copy = kernel(function copy(a: Float32Tensor, out: Float32Tensor, n
   assert.equal(record.operationCount >= 2, true);
 });
 
+test("source-visible kernel names are preserved verbatim, never recased", () => {
+  const source = `import { kernel, gpu } from "@tsonic/gpu/lang.js";
+import type { Float32Tensor } from "@acme/tensor";
+
+export const MixedCase_Kernel9 = kernel(function MixedCase_Kernel9(InputTensor: Float32Tensor, OutTensor: Float32Tensor) {
+  const i = gpu.globalId(0);
+  OutTensor[i] = InputTensor[i];
+});
+`;
+  const { result } = compileGpu({ files: { "index.ts": source } });
+  assert.deepEqual(result.diagnostics, []);
+  const record = JSON.parse(artifactText(result, "kernels/MixedCase_Kernel9.gpu-fake.json"));
+  assert.equal(record.kernel, "MixedCase_Kernel9");
+  assert.deepEqual(
+    record.parameters.map((parameter) => parameter.name),
+    ["InputTensor", "OutTensor"],
+  );
+  const launchPlan = JSON.parse(artifactText(result, "gpu/launch-plan.json"));
+  assert.deepEqual(launchPlan.launchWrappers, [
+    { hostFunctionName: "MixedCase_Kernel9", kernelName: "MixedCase_Kernel9", metaParameters: [] },
+  ]);
+});
+
 test("ordinary host code is ignored by the GPU target", () => {
   const source = `export function greet(name: string): string {
   return "hello " + name;

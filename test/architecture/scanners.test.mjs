@@ -51,6 +51,15 @@ test("no cross-target references in GPU core", () => {
   }
 });
 
+test("no source-name recasing in GPU core", () => {
+  // Provider/library/source-visible names are never auto-recased; kernel and
+  // parameter names flow into facts and IR verbatim.
+  const banned = /toUpperCase\(|toLowerCase\(|camelcase|snakecase|pascalcase/iu;
+  for (const { path, text } of sourceFiles) {
+    assert.doesNotMatch(text, banned, `${path} recases names`);
+  }
+});
+
 test("no CPU-recovery semantics in GPU core", () => {
   for (const { path, text } of sourceFiles) {
     assert.doesNotMatch(text, /fallback/iu, `${path} mentions a recovery lane; GPU compilation must fail closed`);
