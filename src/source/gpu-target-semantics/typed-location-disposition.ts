@@ -3,12 +3,13 @@ import {
 } from "@tsonic/tsts";
 import type {
   ExtensionFactSubject,
+  PointerOperationFact,
   ReadonlySourceFactResolver,
 } from "@tsonic/tsts";
 
 export interface GpuUnsupportedTypedLocationOperation {
   readonly kind: "unsupported-typed-location";
-  readonly operation: "address-of" | "allocate" | "load" | "store";
+  readonly operation: PointerOperationFact["operation"];
 }
 
 export function selectGpuTypedLocationDisposition(
