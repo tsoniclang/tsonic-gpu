@@ -18,6 +18,9 @@ and plug in through explicit contracts.
   artifacts never coexist.
 - The GPU core names no concrete backend, host language, or tensor library in product code.
 - There is no CPU recovery path; a kernel the selected backend cannot lower is a compile error.
+- GPU exposes no target-flavoured reference, borrow, or pointer aliases. A neutral
+  typed-location fact inside a kernel becomes one GPU-owned unsupported disposition
+  and is diagnosed without spelling inference.
 
 ## Installed Plugin Shape
 
