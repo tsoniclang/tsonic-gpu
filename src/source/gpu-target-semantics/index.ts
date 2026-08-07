@@ -28,6 +28,9 @@ import {
 import { gpuLangIntrinsicRows, gpuLangKernelExportId, type GpuLangIntrinsicRow } from "../gpu-lang/index.js";
 import { collectGpuTensorTypeRows, type GpuTensorTypeRow } from "../provider-packages/index.js";
 import { validateGpuTargetOptions } from "../../options/gpu-target-options.js";
+import {
+  selectGpuTypedLocationDisposition,
+} from "./typed-location-disposition.js";
 
 export const gpuTargetSemanticsExtensionId = "tsonic.gpu.target-semantics";
 
@@ -260,6 +263,27 @@ function recordDeviceCallFacts(
   const { ast } = lifecycle.compiler;
   const visit = (node: Node): void => {
     if (ast.kindName(node) === KindCallExpression) {
+      const typedLocation = selectGpuTypedLocationDisposition(
+        lifecycle.host.facts,
+        node,
+      );
+      if (typedLocation !== undefined) {
+        lifecycle.host.diagnostics.append({
+          extensionId: gpuTargetSemanticsExtensionId,
+          extensionCode: "GPU_TYPED_LOCATION_UNSUPPORTED",
+          numericCode: 0,
+          category: "error",
+          message:
+            `GPU kernels do not implement finalized typed-location operation '${typedLocation.operation}'.`,
+          nodeOrSpan: node,
+          evidence: [{
+            message:
+              "The GPU target rejected a canonical TSTS typed-location operation without inspecting its public spelling.",
+          }],
+          identity:
+            `gpu-typed-location:${ast.getFileName(ast.getSourceFile(node))}:${ast.pos(node)}:${ast.end(node)}:${typedLocation.operation}`,
+        });
+      }
       const callee = Node_Expression(node);
       const identity = callee === undefined ? undefined : providerIdentityFor(lifecycle, callee);
       if (identity?.memberId !== undefined) {
