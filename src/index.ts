@@ -14,7 +14,6 @@ export {
   readGpuBackendId,
   readGpuBackendPackageName,
   readGpuHostTargetId,
-  readGpuTypescriptCompatibilityMode,
   validateGpuTargetOptions,
 } from "./options/gpu-target-options.js";
 export { createGpuBackend } from "./backend/gpu-backend.js";

@@ -4,7 +4,6 @@ const supportedGpuTargetOptionKeys = Object.freeze([
   "backendId",
   "backendPackageName",
   "hostTargetId",
-  "typescriptCompatibility",
 ]);
 
 const gpuIdentifierPattern = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/u;
@@ -22,7 +21,6 @@ export function validateGpuTargetOptions(target: TargetSelection): void {
   readGpuBackendId(target);
   readGpuBackendPackageName(target);
   readGpuHostTargetId(target);
-  readGpuTypescriptCompatibilityMode(target);
 }
 
 export function readGpuBackendId(target: TargetSelection): string {
@@ -49,14 +47,6 @@ export function readGpuHostTargetId(target: TargetSelection): string {
     throw new Error(`GPU target option 'hostTargetId' must match ${gpuIdentifierPattern.source}.`);
   }
   return value;
-}
-
-export function readGpuTypescriptCompatibilityMode(target: TargetSelection): "strict-native" {
-  const value = target.options?.typescriptCompatibility;
-  if (value === undefined || value === "strict-native") {
-    return "strict-native";
-  }
-  throw new Error("GPU target option 'typescriptCompatibility' only supports 'strict-native'; GPU kernels have no compatibility lane.");
 }
 
 function readOptionalStringOption(target: TargetSelection, key: string): string | undefined {
