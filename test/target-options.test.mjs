@@ -4,7 +4,6 @@ import {
   readGpuBackendId,
   readGpuBackendPackageName,
   readGpuHostTargetId,
-  readGpuTypescriptCompatibilityMode,
   validateGpuTargetOptions,
 } from "../dist/index.js";
 
@@ -19,7 +18,6 @@ test("valid options pass validation", () => {
       backendId: "triton-like",
       backendPackageName: "@acme/gpu-backend",
       hostTargetId: "python",
-      typescriptCompatibility: "strict-native",
     }),
   );
 });
@@ -45,15 +43,17 @@ test("backendPackageName is optional but must be a non-empty string", () => {
   assert.throws(() => readGpuBackendPackageName(target({ backendPackageName: "" })), /non-empty string/u);
 });
 
-test("typescriptCompatibility only supports strict-native", () => {
-  assert.equal(readGpuTypescriptCompatibilityMode(target({})), "strict-native");
-  assert.equal(readGpuTypescriptCompatibilityMode(target({ typescriptCompatibility: "strict-native" })), "strict-native");
-  assert.throws(() => readGpuTypescriptCompatibilityMode(target({ typescriptCompatibility: "compat" })), /strict-native/u);
-});
-
 test("unknown option keys are rejected", () => {
   assert.throws(
     () => validateGpuTargetOptions(target({ backendId: "fake", hostTargetId: "python", blockSize: 64 })),
     /'options.blockSize' is not supported/u,
+  );
+  assert.throws(
+    () => validateGpuTargetOptions(target({
+      backendId: "fake",
+      hostTargetId: "python",
+      typescriptCompatibility: "strict-native",
+    })),
+    /'options\.typescriptCompatibility' is not supported/u,
   );
 });
